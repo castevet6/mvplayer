@@ -24,6 +24,8 @@ type loadResult struct {
 	path string
 	err  error
 }
+type playerStateMsg playback.State
+type controlResult struct{ err error }
 
 // FileSelectedMsg is emitted when the user presses Enter on a media file.
 type FileSelectedMsg struct{ Path string }
@@ -32,25 +34,28 @@ type listDirectory func(string) ([]browser.Entry, error)
 
 // Model owns browser state. Directory reads run as Bubble Tea commands.
 type Model struct {
-	browseDir string
-	entries   []browser.Entry
-	visible   []browser.Entry
-	cursor    int
-	query     string
-	filtering bool
-	err       error
-	selected  string
-	pending   string
-	request   uint64
-	list      listDirectory
-	player    playback.Player
-	playing   string
-	quitting  bool
+	browseDir        string
+	entries          []browser.Entry
+	visible          []browser.Entry
+	cursor           int
+	query            string
+	filtering        bool
+	err              error
+	selected         string
+	pending          string
+	request          uint64
+	list             listDirectory
+	player           playback.Player
+	playing          string
+	status           playback.State
+	awaitingPlayback bool
+	quitting         bool
 }
 
 func New(browseDir, playFile string, player playback.Player) Model {
 	m := NewWithLister(browseDir, browser.List)
 	m.pending = playFile
+	m.awaitingPlayback = playFile != ""
 	m.player = player
 	return m
 }
@@ -63,10 +68,32 @@ func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error))
 
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.loadDirectory()}
+	if m.player != nil {
+		cmds = append(cmds, m.listenPlayer())
+	}
 	if m.pending != "" {
 		cmds = append(cmds, m.load(m.pending))
 	}
 	return tea.Batch(cmds...)
+}
+
+func (m Model) listenPlayer() tea.Cmd {
+	events := m.player.Events()
+	return func() tea.Msg {
+		state, ok := <-events
+		if !ok {
+			return nil
+		}
+		return playerStateMsg(state)
+	}
+}
+
+func (m Model) control(run func(context.Context) error) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return controlResult{run(ctx)}
+	}
 }
 
 func (m Model) load(path string) tea.Cmd {
@@ -100,7 +127,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case FileSelectedMsg:
 		m.err = nil
+		m.selected = ""
 		m.pending, m.playing = msg.Path, ""
+		// The selected file starts a new playback attempt. Do not let the prior
+		// file's EOF/error status leak into this attempt while mpv switches files.
+		m.status.Ended, m.status.EndReason = false, ""
+		m.status.HasTime, m.status.HasDuration = false, false
+		m.awaitingPlayback = true
 		return m, m.load(msg.Path)
 	case loadResult:
 		if msg.path != m.pending {
@@ -109,9 +142,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 			m.playing = ""
+			m.awaitingPlayback = false
 		} else {
 			m.err = nil
 			m.playing = msg.path
+			m.status.Ended, m.status.EndReason = false, ""
+		}
+		return m, nil
+	case playerStateMsg:
+		m.status = playback.State(msg)
+		if m.status.Path != "" {
+			m.playing = m.status.Path
+			m.pending = m.playing
+			if m.awaitingPlayback && m.status.Path == m.pending && m.status.HasTime {
+				m.awaitingPlayback = false
+			}
+		} else if m.status.Ended {
+			// mpv clears its path just after emitting end-file. Preserve the
+			// completed item so the status row can display Ended.
+			m.playing = m.pending
+		} else if !m.awaitingPlayback {
+			m.playing, m.pending = "", ""
+		}
+		return m, m.listenPlayer()
+	case controlResult:
+		if msg.err != nil {
+			m.err = msg.err
 		}
 		return m, nil
 	case tea.KeyPressMsg:
@@ -143,6 +199,26 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.applyFilter()
 		return m, nil
+	}
+	if m.playing != "" && m.player != nil && !m.status.Ended {
+		switch key.String() {
+		case "space":
+			return m, m.control(func(ctx context.Context) error { return m.player.Pause(ctx, !m.status.Paused) })
+		case "left", "h":
+			return m, m.control(func(ctx context.Context) error { return m.player.Seek(ctx, -5) })
+		case "right", "l":
+			return m, m.control(func(ctx context.Context) error { return m.player.Seek(ctx, 5) })
+		case "+", "=":
+			return m, m.control(func(ctx context.Context) error { return m.player.SetVolume(ctx, min(100, m.status.Volume+5)) })
+		case "-":
+			return m, m.control(func(ctx context.Context) error { return m.player.SetVolume(ctx, max(0, m.status.Volume-5)) })
+		case "s":
+			return m, m.control(func(ctx context.Context) error { return m.player.Stop(ctx) })
+		case "f":
+			if isVideo(m.playing) {
+				return m, m.control(func(ctx context.Context) error { return m.player.Fullscreen(ctx, !m.status.Fullscreen) })
+			}
+		}
 	}
 	switch key.String() {
 	case "up", "k":
@@ -221,8 +297,46 @@ func (m Model) View() tea.View {
 		fmt.Fprintf(&b, "\nSelected: %s\n", m.selected)
 	}
 	if m.pending != "" {
-		fmt.Fprintf(&b, "\nNow playing: %s\n", m.pending)
+		stateLabel := "Playing"
+		switch {
+		case m.awaitingPlayback:
+			stateLabel = "Loading"
+		case m.status.Ended:
+			stateLabel = playbackEndLabel(m.status.EndReason)
+		case m.status.Paused:
+			stateLabel = "Paused"
+		case m.status.Path == "" && m.status.HasTime == false:
+			stateLabel = "Stopped"
+		}
+		fmt.Fprintf(&b, "\nNow playing: %s  %s", m.pending, stateLabel)
+		if m.status.HasTime {
+			fmt.Fprintf(&b, "  %s", formatTime(m.status.Time))
+		}
+		if m.status.HasDuration {
+			fmt.Fprintf(&b, "/%s", formatTime(m.status.Duration))
+		}
+		fmt.Fprintf(&b, "  Volume: %.0f%%\n", m.status.Volume)
 	}
-	b.WriteString("\n↑/k, ↓/j move • Enter open/play • Backspace parent • / filter • q quit\n")
+	b.WriteString("\n↑/k, ↓/j move • Enter open/play • Backspace parent • / filter • Space pause • ←/→ seek • +/- volume • s stop • f fullscreen • q quit\n")
 	return tea.NewView(b.String())
+}
+
+func formatTime(seconds float64) string { n := int(seconds); return fmt.Sprintf("%d:%02d", n/60, n%60) }
+func playbackEndLabel(reason string) string {
+	switch reason {
+	case "eof", "quit":
+		return "Ended"
+	case "error":
+		return "Failed"
+	default:
+		return "Stopped"
+	}
+}
+
+func isVideo(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v", ".mpeg", ".mpg":
+		return true
+	}
+	return false
 }

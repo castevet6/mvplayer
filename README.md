@@ -45,6 +45,11 @@ Then run:
 Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
 requires mpv; browsing remains available when mpv is not installed.
 
+During playback, Space toggles pause, Left/Right seek by five seconds, `+`/`-`
+adjust volume, `s` stops playback, and `f` toggles fullscreen for video. The
+status line follows player-reported playback time, duration, volume, and pause
+state. Browser movement remains on Up/Down or `j`/`k`.
+
 ## Debian playback dependency
 
 Install mpv on Debian with:

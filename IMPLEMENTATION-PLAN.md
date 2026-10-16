@@ -26,7 +26,7 @@ After each implementation session, update the progress table and append a work-l
 | M1 | Go foundation and CLI contract | complete | `go test ./...` and `go vet ./...` passed; `go build -buildvcs=false ./...` passed; built executable help and pseudo-terminal launch/quit passed. |
 | M2 | Responsive local file browser | complete | `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go vet ./...`, and `go build -buildvcs=false ./...` passed; built executable launched in a pseudo-terminal, rendered entries, and quit with terminal reset. |
 | M3 | Single-file video and audio playback | complete | Go tests/race/vet/build and Makefile targets passed. Under Wayland with mpv 0.40.0, video, WAV, and cover-art MP3 loaded; video→audio and audio→video TUI selections worked; shutdown left no mpv process or socket directory. User visually confirmed video window playback and audio playback without a separate media window. |
-| M4 | Playback controls and synchronized status | not started | — |
+| M4 | Playback controls and synchronized status | verification pending | `GOCACHE=/tmp/mvplayer-gocache go test ./...` passed; full shared checks and desktop control checks recorded in the M4 work log below. |
 | M5 | Mixed-media queue | not started | — |
 | M6 | Recovery and lifecycle reliability | not started | — |
 | M7 | Complete responsive TUI | not started | — |
@@ -63,6 +63,8 @@ After each implementation session, update the progress table and append a work-l
 **Complete when:** Both CLI and browser paths can start real audio/video, window behavior matches media type, and normal shutdown cleans up resources.
 
 ## M4 — Playback Controls and Synchronized Status
+
+**Implementation decisions (2026-10-16):** Use Space for pause, Left/Right (or h/l) for five-second seeks, +/- for five-point volume changes, s to stop, and f to toggle fullscreen. Browser movement stays on arrows and j/k. The adapter observes mpv path, pause, time-pos, duration, volume, and fullscreen properties and emits snapshots to Bubble Tea; unknown time/duration remain omitted. Fullscreen is available only for recognized video extensions. Control IPC runs asynchronously with a three-second timeout.
 
 **Implement:** Add play/pause, seek, volume, stop, and video fullscreen controls. Display current item, elapsed time, duration when known, and playback state. Observe mpv changes so video-window controls update the TUI. Disable fullscreen for audio-only playback. Bind and display shortcuts, keeping browser navigation distinct from playback actions.
 
@@ -124,6 +126,38 @@ No arbitrary coverage percentage is required. Tests must cover the milestone's b
 
 Initial entry: implementation plan created while the repository was design-only; all milestones were not started at that point.
 
+Date / milestone / phase: 2026-10-16 / M4 / verification pending
+Changes completed: Added mpv commands for pause, relative seek, volume, stop, and fullscreen. The adapter observes path, pause, playback time, duration, volume, and fullscreen and publishes state snapshots. The TUI handles these updates asynchronously, renders playback status, exposes controls while media is active, and gates fullscreen to recognized video files. Added TUI and IPC event tests and documented shortcuts in README.
+Decisions and rationale: Space toggles pause; Left/Right or h/l seek five seconds; +/- changes volume by five percentage points, bounded to 0–100; s stops; f toggles fullscreen for video. Commands have three-second contexts. Browser movement remains unchanged. Unknown time and duration are omitted from the status line.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, and `git diff --check` passed. Fake-player tests cover command mapping, volume bounds via action logic, audio fullscreen gating, and incoming status; IPC test covers property events interleaved with responses.
+Manual environment and results: mpv v0.40.0 and a Wayland display are available, but interactive terminal/video-window controls have not been manually exercised during this implementation session. X11 is also unverified.
+Failures or checks still pending: Manually pause, seek, adjust volume, and fullscreen from terminal and video window; confirm video-window changes update TUI and confirm fullscreen is disabled for audio. Debian Wayland/X11 acceptance remains for M8.
+Milestone status and next action: verification pending the manual control checks; M4 implementation and automated checks are complete.
+
+Date / milestone / phase: 2026-10-16 / playback IPC recovery / closed
+Changes completed: Fixed repeat-load failures after mpv's IPC connection closes. The adapter now recognizes a disconnected reader or broken-pipe write, discards the dead process/socket session, starts a fresh managed mpv, and retries the requested load once. Concurrent load requests are serialized so recovery cannot tear down a replacement session started by another load. Added a broken-pipe regression check.
+Decisions and rationale: The reported error is a stale-socket transport failure. A non-nil `net.Conn` does not prove mpv is still connected; recovery is limited to IPC disconnects so normal mpv command errors are still surfaced to the user.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./internal/playback -run 'TestCommand(ClassifiesBrokenPipe|CorrelatesResponse)' -count=1`, `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -buildvcs=false ./...`, and `git diff --check` passed.
+Manual environment and results: Not manually replayed through the graphical player in this session; the broken-pipe code path was exercised with a closed `net.Pipe` peer.
+Failures or checks still pending: Confirm repeated Enter playback and recovery after externally closing mpv in the user's desktop session.
+Milestone status and next action: fix implemented and automated checks pass; verify repeated playback in the available Wayland/X11 acceptance sessions.
+
+Date / milestone / phase: 2026-10-16 / EOF reload state / closed
+Changes completed: Prevented a delayed empty-path snapshot from the previous EOF from clearing a newly selected file while its playback is starting. The TUI retains the requested item until mpv reports a time position for it, then applies later EOF state normally. Added a regression test for the stale-state ordering. Added an opt-in headless real-mpv integration check that reloads a short WAV three times after natural EOF.
+Decisions and rationale: A synthetic delayed EOF snapshot made the TUI regression fail before the fix and pass afterward. Headless mpv testing showed repeated IPC load requests themselves succeed after EOF, so the fix is in TUI state reconciliation rather than another player restart/retry.
+Verification commands and results: The opt-in `MVPLAYER_MPV_INTEGRATION=1 GOCACHE=/tmp/mvplayer-gocache go test ./internal/playback -run TestMPVReloadsSameFileAfterEOFIntegration -count=1 -v` passed against real mpv, including three reloads after natural EOF. `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -buildvcs=false ./...`, and `git diff --check` passed.
+Manual environment and results: Headless real-mpv IPC behavior verified with mpv v0.40.0; graphical TUI replay of the reported MP4 sequence was not performed in this session.
+Failures or checks still pending: Confirm the user's visual/audio MP4 replay now starts on the first Enter. M4 Wayland/X11 desktop controls remain pending.
+Milestone status and next action: EOF reload state fix and automated checks are complete; verify the original graphical MP4 report in the user's session.
+
+Date / milestone / phase: 2026-10-16 / playback selection indicator / verification pending
+Changes completed: Cleared the persistent `Selected:` line when the browser selection is handed to playback. It now gives way to the `Now playing:` status instead of remaining as a stale indicator. Added a regression assertion that failed before the change.
+Decisions and rationale: The label was assigned on Enter but had no clearing path, so it remained visible after playback was requested and obscured whether the selection transitioned. `make run` invokes `go run`, which builds the current source and uses the content-addressed Go build cache; it does not launch the root `mvplayer` binary.
+Verification commands and results: Exact-MP4 headless and normal-video-output integration checks passed through the playback adapter and TUI model after EOF. The `Selected` regression failed before the fix and passed after it. `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -buildvcs=false ./...`, and `git diff --check` passed.
+Manual environment and results: The actual `make run` terminal interaction has not yielded a useful captured screen trace; the integration test reproduces its Enter-to-selection-to-load sequence using the TUI model and real mpv.
+Failures or checks still pending: User retest of the latest source is needed to confirm the status transition and first-Enter playback in their terminal.
+Milestone status and next action: stale indicator fix complete; await user's retest of the current source.
+
 Date / milestone / phase: 2026-10-16 / M1 / closed
 Changes completed: Added the Go module, CLI, argument resolver, Bubble Tea minimal screen, and table-driven path/help/error tests. Documented M1-only limitations and dependency choices.
 Decisions and rationale: Module path is `mvplayer` until a canonical remote path exists. Bubble Tea v2.0.10 is selected; `go mod tidy` sets Go 1.26.0 for the resolved dependency graph. File arguments resolve to their parent browse directory and remain pending playback until M3.
@@ -163,6 +197,23 @@ Verification commands and results: Prior Go tests, race tests, vet, build, and M
 Manual environment and results: User reported video displayed in a separate window and played; `q` exited; cover-art audio played without a separate window. User also confirmed selecting video from the browser opened the video window and played.
 Failures or checks still pending: None for M3. Full Debian X11 and Wayland acceptance across controls, fullscreen, window closure, and recovery remains scheduled for M8.
 Milestone status and next action: complete; M3 acceptance criteria are met. M4 is the next milestone.
+
+Date / milestone / phase: 2026-10-16 / M4 playback status at EOF / verification pending
+Changes completed: Added mpv end-file state handling and TUI labels for ended, stopped, and failed playback. Preserved the completed filename when mpv clears its path immediately after EOF, so the status row continues to show Ended rather than reverting to Playing or disappearing.
+Decisions and rationale: The playback adapter reports mpv's end-file event, while the TUI preserves the item across the subsequent empty-path property snapshot. This matches mpv's event ordering and keeps EOF visible until the user selects another file.
+Verification commands and results: `go test ./...` passed. The opt-in real-mpv TUI replay check passed headlessly against `/tmp/mvplayer-check-video.mp4`; one video-output integration run did not receive a start event, while the headless run passed.
+Manual environment and results: The user's reported screen state is not available for direct observation in this session.
+Failures or checks still pending: Retest EOF status in the user's `make run` terminal. M4 desktop controls and fullscreen acceptance remain pending.
+Milestone status and next action: EOF status fix implemented; user should confirm the `Ended` label after playback finishes.
+
+Date / milestone / phase: 2026-10-16 / M4 repeat-play status / verification pending
+Changes completed: Clear the prior playback's ended/error flag and stale time values when a new file selection starts, and again after the load request succeeds. This prevents the previous attempt's Failed/Ended state from contaminating the newly selected attempt.
+Decisions and rationale: Real mpv reloads the same MP4 after natural EOF through the adapter and TUI model. The remaining `Failed` transition can arise from carrying the old status into the new Loading attempt, so the TUI now starts each selection with fresh playback status.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...` passed. Headless exact-MP4 `TestEnterReloadsAfterEOFIntegration` passed. Repeated runs with normal video output are intermittent: some did not report initial advancing time within eight seconds.
+Manual environment and results: User retested with `make run`: after the first playback reaches Ended, pressing Enter again briefly shows Loading and then Failed. There is no `Error:` line. Resetting stale TUI status did not resolve the issue.
+Known bug (deferred): Replaying the same media file with Enter after natural EOF transitions from Loading to Failed, despite no visible error message. Real mpv adapter and headless TUI integration checks reload the exact MP4 successfully, so the remaining issue is specific to the user's interactive playback/session path and remains undiagnosed. Revisit after the main project work is complete; capture mpv/TUI event ordering and process/window state during the second Enter.
+Failures or checks still pending: Same-file replay after EOF remains broken in the user's interactive session. M4 desktop controls and fullscreen acceptance remain pending.
+Milestone status and next action: EOF display fix is verified by the user. Defer repeat-play investigation until the main project work is complete.
 
 Append one entry per implementation session using this template:
 
