@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"mvplayer/internal/browser"
+	"mvplayer/internal/playback"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -16,6 +19,10 @@ type directoryResult struct {
 	path    string
 	entries []browser.Entry
 	err     error
+}
+type loadResult struct {
+	path string
+	err  error
 }
 
 // FileSelectedMsg is emitted when the user presses Enter on a media file.
@@ -36,12 +43,15 @@ type Model struct {
 	pending   string
 	request   uint64
 	list      listDirectory
+	player    playback.Player
+	playing   string
 	quitting  bool
 }
 
-func New(browseDir, playFile string) Model {
+func New(browseDir, playFile string, player playback.Player) Model {
 	m := NewWithLister(browseDir, browser.List)
 	m.pending = playFile
+	m.player = player
 	return m
 }
 
@@ -51,7 +61,25 @@ func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error))
 	return Model{browseDir: browseDir, list: list, request: 1}
 }
 
-func (m Model) Init() tea.Cmd { return m.loadDirectory() }
+func (m Model) Init() tea.Cmd {
+	cmds := []tea.Cmd{m.loadDirectory()}
+	if m.pending != "" {
+		cmds = append(cmds, m.load(m.pending))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m Model) load(path string) tea.Cmd {
+	player := m.player
+	return func() tea.Msg {
+		if player == nil {
+			return loadResult{path: path, err: fmt.Errorf("playback is unavailable")}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		return loadResult{path: path, err: player.Load(ctx, path)}
+	}
+}
 
 func (m Model) loadDirectory() tea.Cmd {
 	request, path, list := m.request, m.browseDir, m.list
@@ -69,6 +97,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err, m.entries = msg.err, msg.entries
 		m.applyFilter()
+		return m, nil
+	case FileSelectedMsg:
+		m.err = nil
+		m.pending, m.playing = msg.Path, ""
+		return m, m.load(msg.Path)
+	case loadResult:
+		if msg.path != m.pending {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.err = msg.err
+			m.playing = ""
+		} else {
+			m.err = nil
+			m.playing = msg.path
+		}
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
@@ -157,7 +201,7 @@ func (m Model) View() tea.View {
 		fmt.Fprintf(&b, "Filter: %s  (press / to edit)\n\n", m.query)
 	}
 	if m.err != nil {
-		fmt.Fprintf(&b, "Directory error: %v\n\n", m.err)
+		fmt.Fprintf(&b, "Error: %v\n\n", m.err)
 	}
 	if len(m.visible) == 0 && m.err == nil {
 		b.WriteString("No matching media files or directories.\n")
@@ -177,7 +221,7 @@ func (m Model) View() tea.View {
 		fmt.Fprintf(&b, "\nSelected: %s\n", m.selected)
 	}
 	if m.pending != "" {
-		fmt.Fprintf(&b, "\nPending playback (available in M3): %s\n", m.pending)
+		fmt.Fprintf(&b, "\nNow playing: %s\n", m.pending)
 	}
 	b.WriteString("\n↑/k, ↓/j move • Enter open/play • Backspace parent • / filter • q quit\n")
 	return tea.NewView(b.String())

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,32 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"mvplayer/internal/browser"
 )
+
+type fakePlayer struct {
+	paths []string
+	err   error
+}
+
+func (p *fakePlayer) Load(_ context.Context, path string) error {
+	p.paths = append(p.paths, path)
+	return p.err
+}
+func (p *fakePlayer) Close() error { return nil }
+
+func TestSelectedFileLoadsThroughPlayer(t *testing.T) {
+	player := &fakePlayer{}
+	m := New(t.TempDir(), "", player)
+	updated, cmd := m.Update(FileSelectedMsg{Path: "/tmp/clip.mp4"})
+	if cmd == nil {
+		t.Fatal("selection did not schedule playback")
+	}
+	result := cmd()
+	updated, _ = updated.Update(result)
+	m = updated.(Model)
+	if len(player.paths) != 1 || player.paths[0] != "/tmp/clip.mp4" || m.playing != "/tmp/clip.mp4" {
+		t.Fatalf("load state: paths=%v playing=%q", player.paths, m.playing)
+	}
+}
 
 func TestDirectoryResultsIgnoreStaleRequests(t *testing.T) {
 	dir := t.TempDir()

@@ -25,7 +25,7 @@ After each implementation session, update the progress table and append a work-l
 | --- | --- | --- | --- |
 | M1 | Go foundation and CLI contract | complete | `go test ./...` and `go vet ./...` passed; `go build -buildvcs=false ./...` passed; built executable help and pseudo-terminal launch/quit passed. |
 | M2 | Responsive local file browser | complete | `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go vet ./...`, and `go build -buildvcs=false ./...` passed; built executable launched in a pseudo-terminal, rendered entries, and quit with terminal reset. |
-| M3 | Single-file video and audio playback | not started | — |
+| M3 | Single-file video and audio playback | complete | Go tests/race/vet/build and Makefile targets passed. Under Wayland with mpv 0.40.0, video, WAV, and cover-art MP3 loaded; video→audio and audio→video TUI selections worked; shutdown left no mpv process or socket directory. User visually confirmed video window playback and audio playback without a separate media window. |
 | M4 | Playback controls and synchronized status | not started | — |
 | M5 | Mixed-media queue | not started | — |
 | M6 | Recovery and lifecycle reliability | not started | — |
@@ -53,6 +53,8 @@ After each implementation session, update the progress table and append a work-l
 **Complete when:** Users can find video and audio files without blocking keyboard input, and errors leave the browser usable.
 
 ## M3 — Single-File Video and Audio Playback
+
+**Implementation decisions (2026-10-16):** Start mpv lazily on the first playback request so browsing works without the optional player installed. Use one private mode-0700 temporary directory for the Unix socket, `--audio-display=no` to suppress cover-art windows, and mpv's normal video auto-window behavior. Bound socket startup to three seconds and each application load request to eight seconds. Immediate playback uses mpv's `loadfile ... replace` command. `make` builds the root `mvplayer` executable; `make run ARGS="..."` accepts CLI arguments and inherits caller environment such as `GOCACHE`.
 
 **Implement:** Add a small playback adapter and one managed mpv process with JSON IPC over a private Unix socket. Connect CLI file inputs and browser selections to playback. Video opens a separate window; audio plays without a window, including audio with cover art. Starting another file replaces current playback. Include bounded startup, basic missing-mpv/load errors, process cleanup, and socket cleanup immediately.
 
@@ -137,6 +139,30 @@ Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`
 Manual environment and results: Built `/tmp/mvplayer`, launched it against the repository in a pseudo-terminal, confirmed directories rendered, pressed `q`, and observed the terminal reset.
 Failures or checks still pending: No permission-denied OS test was used because privileged execution can bypass it; the injected lister error test covers the UI failure path. No separate desktop or mpv checks apply to M2.
 Milestone status and next action: complete; proceed to M3 when authorized.
+
+Date / milestone / phase: 2026-10-16 / M3 / verification pending
+Changes completed: Added a managed mpv adapter using JSON IPC over a private Unix socket, asynchronous browser and CLI file loads, visible load errors, audio cover-art window suppression, process/socket cleanup, and root Makefile targets for default build, run, and test. Updated README usage.
+Decisions and rationale: mpv starts lazily so users can still browse without the runtime dependency. Playback requests replace current playback; adapter startup waits up to three seconds and a load request is bounded to eight seconds. `make run ARGS="..."` passes CLI arguments and inherits environment variables.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, `GOCACHE=/tmp/mvplayer-gocache make`, `GOCACHE=/tmp/mvplayer-gocache make test`, and `GOCACHE=/tmp/mvplayer-gocache make run ARGS=--help` passed. Playback command response correlation/interleaved event handling is covered using an in-memory stream peer; Unix sockets are denied by the current sandbox.
+Manual environment and results: Real mpv playback, audio/video transitions, process cleanup, and Wayland/X11 window behavior were not verified in this environment.
+Failures or checks still pending: Unix-socket peer verification could not bind a Unix socket (`setsockopt: operation not permitted`) in the sandbox. Confirm real mpv behavior and cleanup in a Debian desktop session.
+Milestone status and next action: verification pending; continue M3 acceptance checks when an mpv-capable desktop environment is available.
+
+Date / milestone / phase: 2026-10-16 / M3 / verification update
+Changes completed: Confirmed mpv v0.40.0 is installed. Generated short video-with-audio, WAV, and MP3-with-embedded-cover-art fixtures under `/tmp` using ffmpeg. Launched MVPLAYER in a pseudo-terminal under the available Wayland display for each CLI file form, selected files through the browser for video→audio and audio→video transitions, and quit each session.
+Decisions and rationale: Fixtures remain outside the repository because they are temporary synthetic acceptance media.
+Verification commands and results: Re-ran `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go test -race ./...`, `go vet ./...`, and `make`; all passed. After each player session, checked that no `/tmp/mvplayer-mpv-*` socket directory or mpv process remained. The TUI displayed each requested path as playing and exited with terminal restoration.
+Manual environment and results: mpv v0.40.0 at `/usr/bin/mpv`; `WAYLAND_DISPLAY=wayland-0` and `DISPLAY=:0`. Video, audio-only WAV, and MP3 with attached cover art loaded. Both audio/video selection directions loaded successfully. Direct visual confirmation that video opens a window and audio (including cover art) does not remains unobserved from this interface.
+Failures or checks still pending: Visual window visibility and fullscreen/window-close behavior remain unverified; fullscreen/window-close are later milestones. Debian Wayland/X11 acceptance across both session types is M8.
+Milestone status and next action: verification pending direct observation of the video/audio window behavior; continue with the remaining M3 visual check before M4.
+
+Date / milestone / phase: 2026-10-16 / M3 / closed
+Changes completed: Recorded user-confirmed visual acceptance for separate video-window playback and audio-only playback without a separate media window. The cover-art MP3 was used for the audio check; quitting with `q` succeeded. Combined with the earlier synthetic fixture checks for CLI loading, browser selection, both video/audio selection directions, and process/socket cleanup, all M3 criteria are met.
+Decisions and rationale: The user's desktop observation supplies the visual evidence unavailable through the agent's terminal view.
+Verification commands and results: Prior Go tests, race tests, vet, build, and Makefile target checks passed as recorded above. User ran `make run ARGS=/tmp/mvplayer-check-video.mp4` and `make run ARGS=/tmp/mvplayer-check-cover.mp3`, confirming visible video playback and audible cover-art audio without a separate media window.
+Manual environment and results: User reported video displayed in a separate window and played; `q` exited; cover-art audio played without a separate window. User also confirmed selecting video from the browser opened the video window and played.
+Failures or checks still pending: None for M3. Full Debian X11 and Wayland acceptance across controls, fullscreen, window closure, and recovery remains scheduled for M8.
+Milestone status and next action: complete; M3 acceptance criteria are met. M4 is the next milestone.
 
 Append one entry per implementation session using this template:
 

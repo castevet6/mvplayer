@@ -6,13 +6,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"mvplayer/internal/app"
+	"mvplayer/internal/playback"
 	"mvplayer/internal/tui"
 )
 
 const usage = `Usage: mvplayer [path]
 
 Browse the current directory, a supplied directory, or start with a file
-selected for playback. Playback will be available in a later milestone.
+selected for playback. Playback requires mpv (sudo apt install mpv).
 
 Options:
   -h, --help  show this help
@@ -38,6 +39,10 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = tea.NewProgram(tui.New(startup.BrowseDir, startup.PlayFile)).Run()
+	player := playback.NewMPV()
+	_, err = tea.NewProgram(tui.New(startup.BrowseDir, startup.PlayFile, player)).Run()
+	if closeErr := player.Close(); err == nil {
+		err = closeErr
+	}
 	return err
 }

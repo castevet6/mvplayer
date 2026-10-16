@@ -6,10 +6,10 @@ file browsing and queue management, with mpv handling media playback.
 
 ## Current status
 
-Milestone M1 provides the Go application foundation and CLI contract. It accepts
-no argument, a directory, or a file path; a file is shown as pending playback.
-The current screen is a minimal startup view that exits with `q` or Ctrl+C.
-File browsing and media playback are not implemented yet. See
+Milestones M1 and M2 provide the CLI contract and responsive local file browser.
+M3 connects CLI file paths and browser selections to one managed mpv process.
+Video opens in its own window; audio plays without one, including files with
+embedded cover art. See
 [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) for milestone progress and
 [PROJECT-PLAN.md](PROJECT-PLAN.md) for the intended behavior.
 
@@ -24,10 +24,14 @@ File browsing and media playback are not implemented yet. See
 From the project root:
 
 ```sh
-go test ./...
-go vet ./...
-go build -o mvplayer ./cmd/mvplayer
+make test
+make
 ```
+
+`make` builds the `mvplayer` executable in the project root. `make run` starts
+the interactive player, and `make run ARGS="/path/to/media-file"` passes a
+path argument. Environment variables such as `GOCACHE=/tmp/mvplayer-gocache`
+can be set before `make` or `make run` and are inherited by Go.
 
 Then run:
 
@@ -38,13 +42,12 @@ Then run:
 ./mvplayer /path/to/media-file
 ```
 
-The file form currently records a pending playback request; it does not start
-mpv. Press `q` or Ctrl+C to exit the current interface.
+Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
+requires mpv; browsing remains available when mpv is not installed.
 
 ## Debian playback dependency
 
-mpv is not needed for the current M1 foundation. When playback arrives in M3,
-install mpv on Debian with:
+Install mpv on Debian with:
 
 ```sh
 sudo apt install mpv
