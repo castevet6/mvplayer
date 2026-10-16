@@ -109,13 +109,28 @@ func TestEnterReloadsAfterEOFIntegration(t *testing.T) {
 	if os.Getenv("MVPLAYER_MPV_VIDEO_OUTPUT") == "1" {
 		args = nil
 	}
+	logPath := filepath.Join(t.TempDir(), "mpv.log")
+	args = append(args, "--log-file="+logPath)
 	p := playback.NewMPV(args...)
-	defer p.Close()
+	defer func() {
+		p.Close()
+		if t.Failed() {
+			if log, err := os.ReadFile(logPath); err == nil {
+				var lines []string
+				for _, line := range strings.Split(string(log), "\n") {
+					if strings.Contains(line, "][e]") || strings.Contains(line, "][f]") || strings.Contains(line, "[file]") || strings.Contains(line, "Run command: loadfile") || strings.Contains(line, "EOF") {
+						lines = append(lines, line)
+					}
+				}
+				t.Logf("mpv failure details:\n%s", strings.Join(lines, "\n"))
+			}
+		}
+	}()
 	m := New(t.TempDir(), "", p)
 	m.visible = []browser.Entry{{Name: filepath.Base(path), Path: path, Media: true}}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 6; attempt++ {
 		if attempt > 0 {
 			sawEnded := false
 			deadline := time.NewTimer(8 * time.Second)
@@ -151,6 +166,9 @@ func TestEnterReloadsAfterEOFIntegration(t *testing.T) {
 		}
 		updated, _ = m.Update(loadCmd())
 		m = updated.(Model)
+		if m.err != nil {
+			t.Fatalf("Enter attempt %d: %v", attempt+1, m.err)
+		}
 		deadline := time.NewTimer(5 * time.Second)
 		started := false
 		for !started {
@@ -158,6 +176,9 @@ func TestEnterReloadsAfterEOFIntegration(t *testing.T) {
 			case state := <-p.Events():
 				updated, _ := m.Update(playerStateMsg(state))
 				m = updated.(Model)
+				if state.Ended && state.EndReason == "error" {
+					t.Fatalf("Enter attempt %d: mpv failed playback", attempt+1)
+				}
 				started = state.Path == path && state.HasTime && state.Time > 0.1
 			case <-deadline.C:
 				t.Fatalf("Enter attempt %d did not produce advancing playback", attempt+1)

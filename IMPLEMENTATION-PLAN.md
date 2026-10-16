@@ -4,7 +4,7 @@
 
 Follow this document when implementing the design in [PROJECT-PLAN.md](PROJECT-PLAN.md). That document defines product behavior; this document defines delivery order, verification gates, and progress. Its broad first milestone is split into the eight milestones below. All eight together deliver the initial release scope.
 
-Current state: M1 is complete. The application has a tested Go foundation and CLI contract; directory browsing and real media playback are planned for later milestones. Audio and video are both part of the initial release.
+Current state: M1–M3 are complete. The application supports CLI startup, local browsing, and real audio/video playback. M4 playback controls are implemented; the user has confirmed video replay, seeking, volume, stop, and the corrected TUI. Explicit video-window-to-TUI status synchronization verification remains pending. M5–M8 are not started.
 
 ## Working Through One Milestone
 
@@ -26,7 +26,7 @@ After each implementation session, update the progress table and append a work-l
 | M1 | Go foundation and CLI contract | complete | `go test ./...` and `go vet ./...` passed; `go build -buildvcs=false ./...` passed; built executable help and pseudo-terminal launch/quit passed. |
 | M2 | Responsive local file browser | complete | `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go vet ./...`, and `go build -buildvcs=false ./...` passed; built executable launched in a pseudo-terminal, rendered entries, and quit with terminal reset. |
 | M3 | Single-file video and audio playback | complete | Go tests/race/vet/build and Makefile targets passed. Under Wayland with mpv 0.40.0, video, WAV, and cover-art MP3 loaded; video→audio and audio→video TUI selections worked; shutdown left no mpv process or socket directory. User visually confirmed video window playback and audio playback without a separate media window. |
-| M4 | Playback controls and synchronized status | verification pending | `GOCACHE=/tmp/mvplayer-gocache go test ./...` passed; full shared checks and desktop control checks recorded in the M4 work log below. |
+| M4 | Playback controls and synchronized status | verification pending | Go tests/race/vet/build and real-mpv replay/control checks passed. User confirmed first-Enter replay, seek, volume, stop, and stable TUI rendering/navigation; earlier checks confirmed pause/fullscreen and audio controls. Explicit video-window-to-TUI status synchronization verification remains pending. |
 | M5 | Mixed-media queue | not started | — |
 | M6 | Recovery and lifecycle reliability | not started | — |
 | M7 | Complete responsive TUI | not started | — |
@@ -134,6 +134,14 @@ Manual environment and results: mpv v0.40.0 and a Wayland display are available,
 Failures or checks still pending: Manually pause, seek, adjust volume, and fullscreen from terminal and video window; confirm video-window changes update TUI and confirm fullscreen is disabled for audio. Debian Wayland/X11 acceptance remains for M8.
 Milestone status and next action: verification pending the manual control checks; M4 implementation and automated checks are complete.
 
+Date / milestone / phase: 2026-10-16 / M4 / user desktop control verification
+Changes completed: Recorded user-observed control behavior for video and audio playback.
+Decisions and rationale: Treat controls as verified only where the user confirmed they respond in the desktop session; retain M4 as pending while required video controls fail.
+Verification commands and results: User manually confirmed video fullscreen and pause/resume work. Video seeking, volume, and stop are unresponsive. For audio, pause/resume, seeking, volume, and stop work; fullscreen is disabled and has no effect as intended.
+Manual environment and results: User-tested in the interactive terminal and media window. Video-window-to-TUI status synchronization was not reported.
+Failures or checks still pending: Diagnose and fix video seeking, volume, and stop. Confirm video-window control changes update TUI status. M8 Debian Wayland/X11 acceptance remains pending.
+Milestone status and next action: M4 remains verification pending because three video controls are unresponsive; investigate the video-only control path.
+
 Date / milestone / phase: 2026-10-16 / playback IPC recovery / closed
 Changes completed: Fixed repeat-load failures after mpv's IPC connection closes. The adapter now recognizes a disconnected reader or broken-pipe write, discards the dead process/socket session, starts a fresh managed mpv, and retries the requested load once. Concurrent load requests are serialized so recovery cannot tear down a replacement session started by another load. Added a broken-pipe regression check.
 Decisions and rationale: The reported error is a stale-socket transport failure. A non-nil `net.Conn` does not prove mpv is still connected; recovery is limited to IPC disconnects so normal mpv command errors are still surfaced to the user.
@@ -214,6 +222,30 @@ Manual environment and results: User retested with `make run`: after the first p
 Known bug (deferred): Replaying the same media file with Enter after natural EOF transitions from Loading to Failed, despite no visible error message. Real mpv adapter and headless TUI integration checks reload the exact MP4 successfully, so the remaining issue is specific to the user's interactive playback/session path and remains undiagnosed. Revisit after the main project work is complete; capture mpv/TUI event ordering and process/window state during the second Enter.
 Failures or checks still pending: Same-file replay after EOF remains broken in the user's interactive session. M4 desktop controls and fullscreen acceptance remain pending.
 Milestone status and next action: EOF display fix is verified by the user. Defer repeat-play investigation until the main project work is complete.
+
+Date / milestone / phase: 2026-10-16 / video replay and controls / fixed
+Changes completed: Completed the private mpv window bindings for pause, precise five-second seeking, volume, stop, and fullscreen. Enabled software GPU rendering as a fallback. Classified reader-side IPC disconnects as recoverable so the first Load retries automatically, and cleared the current path when mpv reports it unavailable without a data field. Preserved the existing working-tree changes.
+Decisions and rationale: Reproduced a real video stop/reload failure: loadfile succeeded but mpv emitted end-file/error, with file seek failures and partial-file errors. Allowing software GPU rendering removed that failure. The mpv 0.40 DRM initialization path leaves its descriptor zero-initialized when device discovery fails, then unconditionally closes it during cleanup; a later media load can reuse descriptor 0. Source: https://github.com/mpv-player/mpv/blob/v0.40.0/video/out/drm_common.c (vo_drm_init and vo_drm_uninit). Separately reproduced an IPC disconnect after a successful command write: the generic response error bypassed the existing retry, requiring another Enter. Transport errors now retain their error identity. Window keypress acknowledgements precede the effects, so integration checks wait for observed property changes rather than reading immediately. Precise seeks avoid snapping back to the same keyframe.
+Verification commands and results: The new read-disconnect command and first-Load recovery regressions failed before the fix and passed afterward. Real-mpv video checks verified +, =, -, Left/Right, h/l, Space, s, and reload after stop using a twenty-second synthetic MP4. The TUI integration verified six consecutive Enter loads after natural EOF with video output enabled. Full suite passed with MVPLAYER_MPV_INTEGRATION=1, MVPLAYER_MPV_FIXTURE=/tmp/mvplayer-check-video.mp4, MVPLAYER_MPV_CONTROLS_FIXTURE=/tmp/mvplayer-controls-video.mp4, and MVPLAYER_MPV_VIDEO_OUTPUT=1. GOCACHE=/tmp/mvplayer-gocache go test -race ./..., go vet ./..., and go build -buildvcs=false -o /tmp/mvplayer-fixed ./cmd/mvplayer passed. git diff --check passed.
+Manual environment and results: mpv v0.40.0, available Wayland desktop and software renderer. Checks exercised mpv's actual window input handler through IPC keypress; physical desktop key presses and audible output were not observed. Synthetic media remained under /tmp.
+Failures or checks still pending: No reproduced replay/control failures remain. M4 physical-key and fullscreen acceptance and M8 Debian Wayland/X11 acceptance remain pending. This entry supersedes the earlier deferred repeat-play bug status.
+Milestone status and next action: Reported video bugs fixed with regression coverage; M4 remains pending the remaining desktop acceptance checks.
+
+Date / milestone / phase: 2026-10-16 / TUI corruption from playback diagnostics / fixed
+Changes completed: Stopped forwarding mpv stderr to the application's terminal. Added a subprocess regression that launches a fake mpv emitting stdout/stderr and asserts neither reaches the application output. Recorded user acceptance of first-Enter video replay, seeking, volume, and stop.
+Decisions and rationale: Audio backends can write directly to stderr despite --no-terminal. Those writes bypass Bubble Tea and move the terminal cursor, corrupting the status/menu rendering and subsequent navigation. Discard child stderr so Bubble Tea owns terminal output; explicit mpv log-file diagnostics remain available for integration failures.
+Verification commands and results: TestMPVKeepsChildOutputOffTerminal failed before the fix with backend warning on stderr, then passed in go test ./.... go vet ./... and go build -buildvcs=false -o /tmp/mvplayer-fixed ./cmd/mvplayer passed, using GOCACHE=/tmp/mvplayer-gocache. Real-video TestMPVWindowBindingsIntegration passed for volume, seeking, pause, stop, and reload without backend warnings reaching the terminal. git diff --check passed.
+Manual environment and results: User confirmed replay and the previously broken video controls work, and supplied PipeWire stderr output interleaved with the TUI as evidence of display corruption. The terminal-output regression runs unattended without a display, media fixture, or IPC socket.
+Failures or checks still pending: No automated failures remain. Physical observation of the corrected TUI after restarting the application and M8 Debian Wayland/X11 acceptance remain pending.
+Milestone status and next action: Terminal-output corruption fixed; restart the application to use the updated child-process output routing.
+
+Date / milestone / phase: 2026-10-16 / playback and TUI fixes / user accepted
+Changes completed: Recorded the user's confirmation that video replay starts on the first Enter, seek/volume/stop respond, and TUI rendering/navigation work after suppressing backend stderr. Updated the current-state summary and M4 verification evidence. Prepared the playback fixes, regression checks, usage documentation, and existing synthetic-video screenshots for one commit.
+Decisions and rationale: The user's desktop retest closes the reported playback and TUI defects and supersedes the earlier requests to restart/retest. M4 remains verification pending only for explicit confirmation that video-window changes appear in the TUI; preserve earlier evidence and leave M5–M8 unchanged.
+Verification commands and results: Used the passing Go tests, race checks, vet, build, and real-mpv checks recorded in the preceding entries. User reported that the corrected application now works. git diff --check passed before committing; no source changes were made during this documentation/commit session.
+Manual environment and results: User confirmed playback controls and the corrected TUI in the interactive desktop session. Existing mpv-shot0001.jpg through mpv-shot0004.jpg show the synthetic video test pattern captured during the earlier control investigation.
+Failures or checks still pending: No reported playback or TUI defect remains. Explicit video-window-to-TUI status synchronization verification remains for M4; full Debian Wayland/X11 acceptance remains for M8.
+Milestone status and next action: Reported fixes accepted and ready to commit; finish the remaining M4 verification before starting M5.
 
 Append one entry per implementation session using this template:
 

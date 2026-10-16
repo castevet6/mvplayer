@@ -18,6 +18,19 @@ import (
 
 var errIPCDisconnected = errors.New("mpv IPC disconnected")
 
+// Keep video-window shortcuts consistent with the terminal controls.
+const windowBindings = `SPACE cycle pause
+LEFT seek -5 relative+exact
+RIGHT seek 5 relative+exact
+h seek -5 relative+exact
+l seek 5 relative+exact
++ add volume 5
+= add volume 5
+- add volume -5
+s stop
+f cycle fullscreen
+`
+
 // Player is the small application-facing playback boundary.
 type Player interface {
 	Load(context.Context, string) error
@@ -62,6 +75,7 @@ type MPV struct {
 type response struct {
 	Error string          `json:"error"`
 	Data  json.RawMessage `json:"data"`
+	err   error
 }
 
 func NewMPV(extraArgs ...string) *MPV {
@@ -100,9 +114,19 @@ func (p *MPV) startLocked(ctx context.Context) error {
 		return fmt.Errorf("secure mpv socket directory: %w", err)
 	}
 	socket := filepath.Join(dir, "mpv.sock")
-	args := []string{"--idle=yes", "--no-terminal", "--input-ipc-server=" + socket, "--audio-display=no"}
+	inputConf := filepath.Join(dir, "input.conf")
+	if err := os.WriteFile(inputConf, []byte(windowBindings), 0600); err != nil {
+		os.RemoveAll(dir)
+		return fmt.Errorf("write private mpv input bindings: %w", err)
+	}
+	// Allow software GPU rendering on desktops without hardware acceleration.
+	// mpv 0.40's failed DRM fallback can close fd 0, breaking subsequent loads
+	// when the reopened media file reuses that descriptor.
+	args := []string{"--idle=yes", "--no-terminal", "--input-ipc-server=" + socket, "--input-conf=" + inputConf, "--audio-display=no", "--gpu-sw=yes"}
 	args = append(args, p.extraArgs...)
 	cmd := exec.Command(bin, args...)
+	// Backend libraries can write directly to stderr even with --no-terminal.
+	// Bubble Tea must be the only writer to the application's terminal.
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		os.RemoveAll(dir)
@@ -198,7 +222,7 @@ func (p *MPV) Pause(ctx context.Context, value bool) error {
 	return err
 }
 func (p *MPV) Seek(ctx context.Context, seconds float64) error {
-	_, err := p.command(ctx, "seek", seconds, "relative")
+	_, err := p.command(ctx, "seek", seconds, "relative+exact")
 	return err
 }
 func (p *MPV) SetVolume(ctx context.Context, value float64) error {
@@ -237,44 +261,45 @@ func (p *MPV) command(ctx context.Context, name string, args ...any) (json.RawMe
 	id := p.next.Add(1)
 	ch := make(chan response, 1)
 	p.mu.Lock()
-	p.pending[id] = ch
-	conn := p.conn
+	conn, done := p.conn, p.closed
+	if conn != nil {
+		p.pending[id] = ch
+	}
 	p.mu.Unlock()
 	if conn == nil {
 		return nil, errors.New("mpv IPC is not connected")
 	}
+	defer func() {
+		p.mu.Lock()
+		delete(p.pending, id)
+		p.mu.Unlock()
+	}()
 	payload, _ := json.Marshal(map[string]any{"command": append([]any{name}, args...), "request_id": id})
 	p.writes.Lock()
 	_, err := fmt.Fprintf(conn, "%s\n", payload)
 	p.writes.Unlock()
 	if err != nil {
-		p.mu.Lock()
-		delete(p.pending, id)
-		p.mu.Unlock()
 		return nil, fmt.Errorf("%w: write mpv command: %v", errIPCDisconnected, err)
 	}
+	var r response
 	select {
-	case r := <-ch:
-		if r.Error != "success" {
-			return nil, fmt.Errorf("mpv command %s: %s", name, r.Error)
-		}
-		return r.Data, nil
+	case r = <-ch:
 	case <-ctx.Done():
-		p.mu.Lock()
-		delete(p.pending, id)
-		p.mu.Unlock()
 		return nil, ctx.Err()
-	case <-p.closed:
+	case <-done:
 		select {
-		case r := <-ch:
-			if r.Error != "success" {
-				return nil, fmt.Errorf("mpv command %s: %s", name, r.Error)
-			}
-			return r.Data, nil
+		case r = <-ch:
 		default:
 			return nil, errIPCDisconnected
 		}
 	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.Error != "success" {
+		return nil, fmt.Errorf("mpv command %s: %s", name, r.Error)
+	}
+	return r.Data, nil
 }
 
 func (p *MPV) readLoop(conn net.Conn) {
@@ -317,7 +342,7 @@ func (p *MPV) readLoop(conn net.Conn) {
 	p.mu.Lock()
 	for id, ch := range p.pending {
 		delete(p.pending, id)
-		ch <- response{Error: "IPC disconnected"}
+		ch <- response{err: errIPCDisconnected}
 	}
 	p.mu.Unlock()
 }
@@ -326,7 +351,7 @@ func (p *MPV) updateProperty(name string, raw json.RawMessage) {
 	p.mu.Lock()
 	switch name {
 	case "path":
-		if string(raw) == "null" {
+		if len(raw) == 0 || string(raw) == "null" {
 			p.state.Path = ""
 		} else {
 			_ = json.Unmarshal(raw, &p.state.Path)

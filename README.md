@@ -45,10 +45,15 @@ Then run:
 Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
 requires mpv; browsing remains available when mpv is not installed.
 
-During playback, Space toggles pause, Left/Right seek by five seconds, `+`/`-`
-adjust volume, `s` stops playback, and `f` toggles fullscreen for video. The
-status line follows player-reported playback time, duration, volume, and pause
-state. Browser movement remains on Up/Down or `j`/`k`.
+During playback, these shortcuts work in both the terminal and the video window:
+Space toggles pause, Left/Right (or `h`/`l`) seek by five seconds, `+`/`-`
+adjust volume (`=` also raises it), `s` stops playback, and `f` toggles fullscreen
+for video. The status line follows player-reported playback time, duration, volume,
+and pause state. Browser movement remains on Up/Down or `j`/`k`.
+
+Playback allows software graphics rendering when GPU acceleration is unavailable,
+including remote desktops. This avoids a failing graphics fallback in mpv 0.40
+that can prevent a video from reopening after playback ends or stops.
 
 ## Debian playback dependency
 
