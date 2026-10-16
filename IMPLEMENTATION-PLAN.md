@@ -28,7 +28,7 @@ After each implementation session, update the progress table and append a work-l
 | M3 | Single-file video and audio playback | complete | Go tests/race/vet/build and Makefile targets passed. Under Wayland with mpv 0.40.0, video, WAV, and cover-art MP3 loaded; video→audio and audio→video TUI selections worked; shutdown left no mpv process or socket directory. User visually confirmed video window playback and audio playback without a separate media window. |
 | M4 | Playback controls and synchronized status | complete | Go tests/race/vet/build and real-mpv replay/control checks passed. User confirmed first-Enter replay, seek, volume, stop, and stable TUI rendering/navigation; earlier checks confirmed pause/fullscreen and audio controls. User's acceptance of the corrected synchronized TUI closes the final pending desktop check. |
 | M5 | Mixed-media queue | verification pending | Full Go tests/race/vet/build pass. Real mpv queue integration passes video → audio → video and audio → video → audio, including correct ready/Playing status. User retest of ASCII queue markers and the corrected live TUI transitions remains pending. |
-| M6 | Recovery and lifecycle reliability | not started | — |
+| M6 | Recovery and lifecycle reliability | complete | Go tests/race/vet/build and diff checks passed; real-mpv mixed-queue and external-exit recovery integration passed. User verified window close, restart after player exit, mixed-media transitions without the earlier intermittent black screen, interruption, and cleanup. |
 | M7 | Complete responsive TUI | not started | — |
 | M8 | Debian acceptance and usage documentation | not started | — |
 
@@ -86,11 +86,19 @@ Before implementation, record precise next/previous and current-entry removal se
 
 ## M6 — Recovery and Lifecycle Reliability
 
+**Decisions (2026-10-16):** After an mpv exit or IPC disconnect, preserve the browser and queue and wait for the next explicit playback request to start a fresh session. Give each request an attempt ID so repeated selection of the same path cannot accept stale load results or player events. Treat matching `file-loaded` as load readiness. Bind mpv's `CLOSE_WIN` input to `stop`, leaving the managed player idle. Bubble Tea owns SIGINT/SIGTERM and terminal restoration; application shutdown cancels playback work before closing the player. Retain three-second control and eight-second load limits, and allow up to two seconds for process cleanup after the 500 ms graceful quit.
+
 **Implement:** Complete handling for startup timeouts, command failures, IPC disconnects, unexpected player exits, and files disappearing after listing. Closing the video window stops playback while preserving the browser and queue; another selection can start playback again. Quitting or interruption shuts down the managed process, closes IPC, removes the socket, and restores the terminal. Distinguish intentional window changes during audio transitions from user closure.
 
 **Verify:** Inject failures through fake adapters and IPC peers. Exercise repeated start/stop cycles, cancellation during startup, and shutdown with a pending command. Manually close the video window, terminate mpv externally, select another item, and interrupt MVPLAYER. Check recovery, visible errors, and resource cleanup.
 
 **Complete when:** Every covered failure has a bounded outcome, preserves usable application state where possible, and leaves no managed process or socket after exit.
+
+**Implementation log (2026-10-16):** Added attempt IDs to loads and playback snapshots, wait-for-`file-loaded` load completion, matching error-EOF details, process-exit monitoring and reaping, command write deadlines, session invalidation on IPC closure, and retry on the next explicit request only. Added `CLOSE_WIN stop`, application-context cancellation, visible playback failures, browser/queue preservation, and regression tests for repeated-path attempts, stale events, failure state, and window binding. README now describes recovery and window-close behavior.
+
+**Verification:** `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, and `git diff --check` passed. Outside the sandbox, the opt-in real-mpv mixed-media queue test passed all sequences, and the lifecycle integration passed external mpv termination followed by an explicit successful reload. The user manually confirmed that closing the video window leaves MVPLAYER usable and playback can be restarted; externally terminated mpv reports a clear error and can also be restarted; mixed-media transitions work and the previously intermittent black screen did not recur; interruption restores the terminal and cleans up the player/socket. M6 is complete. M5's separate queue marker and Loading-state retest remains pending.
+
+**Closure log (2026-10-16):** Reclassified normal mpv `quit` after video-window closure as Stopped, replaced raw process/IPC exit details with an actionable recovery message, and waited for mpv's final event before classifying process exit. The user's final retest confirmed the error is clear and the black screen did not recur.
 
 ## M7 — Complete Responsive TUI
 

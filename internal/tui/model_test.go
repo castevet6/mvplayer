@@ -24,7 +24,7 @@ type fakePlayer struct {
 	stops, fullscreens int
 }
 
-func (p *fakePlayer) Load(_ context.Context, path string) error {
+func (p *fakePlayer) Load(_ context.Context, _ uint64, path string) error {
 	p.paths = append(p.paths, path)
 	return p.err
 }
@@ -94,6 +94,44 @@ func TestStaleEOFStateDoesNotClearReload(t *testing.T) {
 	m = updated.(Model)
 	if m.playing != "" || m.pending != "" {
 		t.Fatalf("current EOF state was not applied: playing=%q pending=%q", m.playing, m.pending)
+	}
+}
+
+func TestPlaybackAttemptRejectsStaleLoadAndPlayerEvents(t *testing.T) {
+	p := &fakePlayer{}
+	m := New(t.TempDir(), "", p)
+	updated, oldCmd := m.Update(FileSelectedMsg{Path: "/tmp/same.mp4"})
+	m = updated.(Model)
+	oldAttempt := m.attempt
+	updated, _ = m.Update(FileSelectedMsg{Path: "/tmp/same.mp4"})
+	m = updated.(Model)
+	newAttempt := m.attempt
+	if newAttempt == oldAttempt {
+		t.Fatal("repeated selection reused its attempt identity")
+	}
+	updated, _ = m.Update(loadResult{path: "/tmp/same.mp4", attempt: oldAttempt})
+	m = updated.(Model)
+	if m.playing != "" || !m.awaitingPlayback {
+		t.Fatalf("stale load changed active attempt: %#v", m)
+	}
+	updated, _ = m.Update(playerStateMsg(playback.State{Attempt: oldAttempt, Path: "/tmp/same.mp4", Ready: true}))
+	m = updated.(Model)
+	if m.playing != "" || !m.awaitingPlayback {
+		t.Fatalf("stale player event changed active attempt: %#v", m)
+	}
+	_ = oldCmd
+}
+
+func TestPlayerFailurePreservesBrowserAndQueue(t *testing.T) {
+	p := &fakePlayer{}
+	m := New(t.TempDir(), "", p)
+	m.queue = []string{"/q/one.mp4", "/q/two.mp3"}
+	m.queueIndex, m.queueResumeIndex = 0, 1
+	m.cursor = 3
+	updated, _ := m.Update(playerStateMsg(playback.State{Attempt: 0, Path: "/q/one.mp4", Ended: true, EndReason: "error", Failure: errors.New("mpv exited")}))
+	m = updated.(Model)
+	if m.err == nil || m.playing != "" || len(m.queue) != 2 || m.queueIndex != 0 || m.cursor != 3 {
+		t.Fatalf("failure did not preserve usable application state: %#v", m)
 	}
 }
 
@@ -593,6 +631,12 @@ func TestEndOfFileKeepsStatusWhenMPVClearsPath(t *testing.T) {
 	m = updated.(Model)
 	if m.pending != path || !strings.Contains(m.View().Content, "Now playing: "+path+"  Ended") {
 		t.Fatalf("EOF status was lost when mpv cleared path: pending=%q view=%s", m.pending, m.View().Content)
+	}
+}
+
+func TestQuitEndFileRendersStopped(t *testing.T) {
+	if got := playbackEndLabel("quit"); got != "Stopped" {
+		t.Fatalf("quit label = %q, want Stopped", got)
 	}
 }
 

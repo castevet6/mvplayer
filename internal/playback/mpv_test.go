@@ -23,7 +23,7 @@ func TestMPVKeepsChildOutputOffTerminal(t *testing.T) {
 		defer p.Close()
 		// The fake mpv emits diagnostics and exits before creating IPC. Exercise
 		// the real launch path without needing media, a display, or a socket.
-		if err := p.Load(ctx, "/tmp/clip.mp4"); err == nil {
+		if err := p.Load(ctx, 1, "/tmp/clip.mp4"); err == nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -41,6 +41,12 @@ func TestMPVKeepsChildOutputOffTerminal(t *testing.T) {
 	}
 	if len(output) != 0 {
 		t.Fatalf("mpv wrote outside the TUI renderer: %q", output)
+	}
+}
+
+func TestWindowCloseStopsWithoutQuittingPlayer(t *testing.T) {
+	if !strings.Contains(windowBindings, "CLOSE_WIN stop") {
+		t.Fatal("closing the mpv video window must stop playback while leaving mpv idle")
 	}
 }
 
@@ -164,7 +170,7 @@ func TestMPVReloadsSameFileAfterEOFIntegration(t *testing.T) {
 	defer p.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := p.Load(ctx, path); err != nil {
+	if err := p.Load(ctx, 1, path); err != nil {
 		t.Fatal(err)
 	}
 	// The generated clip is three seconds; leave enough time for natural EOF before
@@ -186,7 +192,7 @@ func TestMPVReloadsSameFileAfterEOFIntegration(t *testing.T) {
 		if !sawEnded {
 			t.Fatalf("playback attempt %d did not publish natural EOF", attempt)
 		}
-		if err := p.Load(ctx, path); err != nil {
+		if err := p.Load(ctx, 1, path); err != nil {
 			t.Fatalf("reload %d: %v", attempt+1, err)
 		}
 		deadline := time.NewTimer(2 * time.Second)
@@ -246,7 +252,7 @@ func TestMPVWindowBindingsIntegration(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := p.Load(ctx, path); err != nil {
+	if err := p.Load(ctx, 1, path); err != nil {
 		t.Fatal(err)
 	}
 	// IPC command success acknowledges dispatch. Wait for the actual effect,
@@ -285,7 +291,7 @@ func TestMPVWindowBindingsIntegration(t *testing.T) {
 		}
 	}
 	// A window stop must not leave the next selection paused or disconnected.
-	if err := p.Load(ctx, path); err != nil {
+	if err := p.Load(ctx, 1, path); err != nil {
 		t.Fatal(err)
 	}
 	waitMPVState(t, p, func(s State) bool { return s.Path == path && s.HasTime && !s.Ended && !s.Paused && s.Time > 0.1 })
@@ -309,10 +315,49 @@ func TestMPVRecoversReadDisconnectIntegration(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	if err := p.Load(ctx, path); err != nil {
+	if err := p.Load(ctx, 1, path); err != nil {
 		t.Fatalf("first load did not recover from read-side disconnect: %v", err)
 	}
 	waitMPVState(t, p, func(s State) bool { return s.Path == path && s.HasTime && s.Time > 0.1 })
+}
+
+func TestMPVRestartsAfterExternalExitOnNextLoadIntegration(t *testing.T) {
+	if os.Getenv("MVPLAYER_MPV_INTEGRATION") != "1" {
+		t.Skip("set MVPLAYER_MPV_INTEGRATION=1 to run the real mpv lifecycle check")
+	}
+	path := filepath.Join(t.TempDir(), "short.wav")
+	writeShortWAV(t, path)
+	p := NewMPV("--vo=null", "--ao=null")
+	defer p.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	if err := p.Load(ctx, 1, path); err != nil {
+		t.Fatal(err)
+	}
+	p.mu.Lock()
+	process := p.cmd.Process
+	p.mu.Unlock()
+	if err := process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	seenFailure := false
+	for !seenFailure {
+		select {
+		case state := <-p.Events():
+			seenFailure = state.Attempt == 1 && state.Failure != nil
+		case <-ctx.Done():
+			t.Fatal("external mpv exit was not reported before timeout")
+		}
+	}
+	if err := p.Load(ctx, 2, path); err != nil {
+		t.Fatalf("explicit next load did not recover: %v", err)
+	}
+	p.mu.Lock()
+	state := p.state
+	p.mu.Unlock()
+	if state.Attempt != 2 || !state.Ready {
+		t.Fatalf("recovered session state: %+v", state)
+	}
 }
 
 func waitMPVState(t *testing.T, p *MPV, want func(State) bool) State {

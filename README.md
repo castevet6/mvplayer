@@ -57,6 +57,12 @@ adjust volume (`=` also raises it), `s` stops playback, and `f` toggles fullscre
 for video. The status line follows player-reported playback time, duration, volume,
 and pause state. Browser movement remains on Up/Down or `j`/`k`.
 
+Closing the video window stops the current item and leaves the browser open.
+If mpv exits or its IPC connection fails, MVPLAYER reports the failure and
+keeps the queue; choose a file or queue item again to start a fresh player.
+Quitting or interrupting MVPLAYER cancels pending playback work and closes its
+managed mpv process and private socket.
+
 Playback allows software graphics rendering when GPU acceleration is unavailable,
 including remote desktops. This avoids a failing graphics fallback in mpv 0.40
 that can prevent a video from reopening after playback ends or stops.

@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-var errIPCDisconnected = errors.New("mpv IPC disconnected")
+var errIPCDisconnected = errors.New("mpv connection was lost; select media to restart playback")
 
 // Keep video-window shortcuts consistent with the terminal controls.
 const windowBindings = `SPACE cycle pause
@@ -29,11 +29,12 @@ l seek 5 relative+exact
 - add volume -5
 s stop
 f cycle fullscreen
+CLOSE_WIN stop
 `
 
 // Player is the small application-facing playback boundary.
 type Player interface {
-	Load(context.Context, string) error
+	Load(context.Context, uint64, string) error
 	Pause(context.Context, bool) error
 	Seek(context.Context, float64) error
 	SetVolume(context.Context, float64) error
@@ -45,6 +46,8 @@ type Player interface {
 
 // State is a snapshot derived from mpv's observed properties.
 type State struct {
+	Attempt              uint64
+	Failure              error
 	Path                 string
 	Paused               bool
 	Ended                bool
@@ -58,19 +61,25 @@ type State struct {
 
 // MPV manages one mpv process and its private JSON IPC socket.
 type MPV struct {
-	startMu   sync.Mutex
-	loadMu    sync.Mutex
-	mu        sync.Mutex
-	conn      net.Conn
-	cmd       *exec.Cmd
-	dir       string
-	extraArgs []string
-	writes    sync.Mutex
-	next      atomic.Uint64
-	pending   map[uint64]chan response
-	closed    chan struct{}
-	events    chan State
-	state     State
+	startMu       sync.Mutex
+	loadMu        sync.Mutex
+	mu            sync.Mutex
+	conn          net.Conn
+	cmd           *exec.Cmd
+	dir           string
+	extraArgs     []string
+	writes        sync.Mutex
+	next          atomic.Uint64
+	pending       map[uint64]chan response
+	closed        chan struct{}
+	events        chan State
+	state         State
+	finalized     bool
+	ready         map[uint64]chan error
+	entryAttempts map[int64]uint64
+	loadAttempts  []uint64
+	waitDone      chan struct{}
+	waitErr       error
 }
 
 type response struct {
@@ -80,12 +89,18 @@ type response struct {
 }
 
 func NewMPV(extraArgs ...string) *MPV {
-	return &MPV{pending: make(map[uint64]chan response), closed: make(chan struct{}), events: make(chan State, 32), extraArgs: extraArgs}
+	return &MPV{pending: make(map[uint64]chan response), closed: make(chan struct{}), events: make(chan State, 32), extraArgs: extraArgs, ready: make(map[uint64]chan error), entryAttempts: make(map[int64]uint64)}
 }
 
 func (p *MPV) start(ctx context.Context) error {
 	p.startMu.Lock()
 	defer p.startMu.Unlock()
+	p.mu.Lock()
+	finalized := p.finalized
+	p.mu.Unlock()
+	if finalized {
+		return errors.New("mpv player is closed")
+	}
 	if p.sessionClosed() {
 		if err := p.restartLocked(ctx); err != nil {
 			return err
@@ -133,6 +148,8 @@ func (p *MPV) startLocked(ctx context.Context) error {
 		os.RemoveAll(dir)
 		return fmt.Errorf("start mpv: %w", err)
 	}
+	waitDone := make(chan struct{})
+	go func() { p.waitErr = cmd.Wait(); close(waitDone) }()
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(20 * time.Millisecond)
@@ -145,28 +162,70 @@ func (p *MPV) startLocked(ctx context.Context) error {
 			break
 		}
 		select {
+		case <-waitDone:
+			os.RemoveAll(dir)
+			return fmt.Errorf("mpv exited before IPC was ready: %w", p.waitErr)
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
+			<-waitDone
 			os.RemoveAll(dir)
 			return fmt.Errorf("wait for mpv IPC: %w", ctx.Err())
 		case <-deadline.C:
 			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
+			<-waitDone
 			os.RemoveAll(dir)
 			return fmt.Errorf("mpv IPC socket did not become ready within 3 seconds")
 		case <-tick.C:
 		}
 	}
 	p.mu.Lock()
-	p.conn, p.cmd, p.dir = conn, cmd, dir
+	p.conn, p.cmd, p.dir, p.waitDone = conn, cmd, dir, waitDone
 	p.mu.Unlock()
 	go p.readLoop(conn)
 	for _, property := range []string{"path", "pause", "time-pos", "duration", "volume", "fullscreen"} {
 		observeCtx, cancel := context.WithTimeout(ctx, time.Second)
-		_, _ = p.command(observeCtx, "observe_property", 1, property)
+		_, observeErr := p.command(observeCtx, "observe_property", 1, property)
 		cancel()
+		if observeErr != nil {
+			_ = conn.Close()
+			_ = cmd.Process.Kill()
+			<-waitDone
+			_ = os.RemoveAll(dir)
+			p.mu.Lock()
+			p.conn, p.cmd, p.dir, p.waitDone = nil, nil, "", nil
+			p.mu.Unlock()
+			return fmt.Errorf("observe mpv %s: %w", property, observeErr)
+		}
 	}
+	go func() {
+		<-waitDone
+		p.mu.Lock()
+		current, activeConn, readerDone := p.cmd == cmd, p.conn, p.closed
+		p.mu.Unlock()
+		if current {
+			// The process has exited, so its socket should reach EOF too. Let the
+			// reader apply any final end-file event before classifying the exit.
+			select {
+			case <-readerDone:
+			case <-time.After(250 * time.Millisecond):
+				if activeConn != nil {
+					_ = activeConn.Close()
+				}
+				<-readerDone
+			}
+			p.mu.Lock()
+			intentional := p.finalized || (p.state.Ended && p.state.EndReason == "quit")
+			if !intentional {
+				p.state.Ended, p.state.EndReason = true, "error"
+				p.state.Failure = errors.New("mpv stopped unexpectedly; select a media file or queue item to restart playback")
+			}
+			state := p.state
+			p.mu.Unlock()
+			if !intentional {
+				p.publishState(state)
+			}
+		}
+	}()
 	return nil
 }
 
@@ -204,7 +263,11 @@ func (p *MPV) restartLocked(ctx context.Context) error {
 	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		if p.waitDone != nil {
+			<-p.waitDone
+		} else {
+			_ = cmd.Wait()
+		}
 	}
 	if dir != "" {
 		_ = os.RemoveAll(dir)
@@ -236,26 +299,53 @@ func (p *MPV) Fullscreen(ctx context.Context, value bool) error {
 	return err
 }
 
-func (p *MPV) Load(ctx context.Context, path string) error {
+func (p *MPV) Load(ctx context.Context, attempt uint64, path string) error {
 	p.loadMu.Lock()
 	defer p.loadMu.Unlock()
+	ready := make(chan error, 1)
+	p.mu.Lock()
+	if p.finalized {
+		p.mu.Unlock()
+		return errors.New("mpv player is closed")
+	}
+	p.state.Attempt, p.state.Failure = attempt, nil
+	p.ready[attempt] = ready
+	p.loadAttempts = append(p.loadAttempts, attempt)
+	p.mu.Unlock()
+	defer func() { p.mu.Lock(); delete(p.ready, attempt); p.mu.Unlock() }()
 	if err := p.start(ctx); err != nil {
+		p.removeLoadAttempt(attempt)
 		return err
 	}
 	_, err := p.command(ctx, "loadfile", path, "replace")
-	if errors.Is(err, errIPCDisconnected) {
-		p.startMu.Lock()
-		restartErr := p.restartLocked(ctx)
-		p.startMu.Unlock()
-		if restartErr != nil {
-			return fmt.Errorf("recover mpv IPC: %w", restartErr)
-		}
-		_, err = p.command(ctx, "loadfile", path, "replace")
-	}
 	if err != nil {
+		p.removeLoadAttempt(attempt)
 		return fmt.Errorf("load %q: %w", path, err)
 	}
-	return nil
+	select {
+	case err := <-ready:
+		return err
+	case <-ctx.Done():
+		p.removeLoadAttempt(attempt)
+		p.mu.Lock()
+		conn := p.conn
+		p.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return ctx.Err()
+	}
+}
+
+func (p *MPV) removeLoadAttempt(attempt uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, candidate := range p.loadAttempts {
+		if candidate == attempt {
+			p.loadAttempts = append(p.loadAttempts[:i], p.loadAttempts[i+1:]...)
+			break
+		}
+	}
 }
 
 func (p *MPV) command(ctx context.Context, name string, args ...any) (json.RawMessage, error) {
@@ -277,7 +367,13 @@ func (p *MPV) command(ctx context.Context, name string, args ...any) (json.RawMe
 	}()
 	payload, _ := json.Marshal(map[string]any{"command": append([]any{name}, args...), "request_id": id})
 	p.writes.Lock()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetWriteDeadline(deadline)
+	} else {
+		_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+	}
 	_, err := fmt.Fprintf(conn, "%s\n", payload)
+	_ = conn.SetWriteDeadline(time.Time{})
 	p.writes.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("%w: write mpv command: %v", errIPCDisconnected, err)
@@ -309,12 +405,14 @@ func (p *MPV) readLoop(conn net.Conn) {
 	s.Buffer(make([]byte, 4096), 1<<20)
 	for s.Scan() {
 		var msg struct {
-			ID     uint64          `json:"request_id"`
-			Error  string          `json:"error"`
-			Data   json.RawMessage `json:"data"`
-			Event  string          `json:"event"`
-			Name   string          `json:"name"`
-			Reason string          `json:"reason"`
+			ID        uint64          `json:"request_id"`
+			Error     string          `json:"error"`
+			Data      json.RawMessage `json:"data"`
+			Event     string          `json:"event"`
+			Name      string          `json:"name"`
+			Reason    string          `json:"reason"`
+			FileError string          `json:"file_error"`
+			EntryID   int64           `json:"playlist_entry_id"`
 		}
 		if json.Unmarshal(s.Bytes(), &msg) != nil {
 			continue
@@ -325,11 +423,34 @@ func (p *MPV) readLoop(conn net.Conn) {
 		}
 		switch msg.Event {
 		case "start-file":
-			p.updatePlaybackEvent(false, "", false)
+			attempt := p.bindEntry(msg.EntryID)
+			p.updatePlaybackEvent(attempt, false, "", false)
 		case "file-loaded":
-			p.updatePlaybackEvent(false, "", true)
+			p.mu.Lock()
+			attempt := p.entryAttempts[msg.EntryID]
+			p.mu.Unlock()
+			p.updatePlaybackEvent(attempt, false, "", true)
 		case "end-file":
-			p.updatePlaybackEvent(true, msg.Reason, false)
+			p.mu.Lock()
+			attempt := p.entryAttempts[msg.EntryID]
+			delete(p.entryAttempts, msg.EntryID)
+			p.mu.Unlock()
+			p.updatePlaybackEvent(attempt, true, msg.Reason, false)
+			if msg.Reason == "error" {
+				p.mu.Lock()
+				ready := p.ready[attempt]
+				p.mu.Unlock()
+				if ready != nil {
+					detail := msg.FileError
+					if detail == "" {
+						detail = "mpv could not play the selected file"
+					}
+					select {
+					case ready <- fmt.Errorf("%s", detail):
+					default:
+					}
+				}
+			}
 		}
 		if msg.ID == 0 {
 			continue
@@ -348,6 +469,33 @@ func (p *MPV) readLoop(conn net.Conn) {
 		ch <- response{err: errIPCDisconnected}
 	}
 	p.mu.Unlock()
+	p.mu.Lock()
+	finalized := p.finalized
+	p.mu.Unlock()
+	if !finalized {
+		p.mu.Lock()
+		if p.conn == conn && !p.finalized && p.state.Failure == nil {
+			p.state.Ended, p.state.EndReason = true, "error"
+			p.state.Failure = errIPCDisconnected
+			state := p.state
+			p.mu.Unlock()
+			p.publishState(state)
+		} else {
+			p.mu.Unlock()
+		}
+	}
+}
+
+func (p *MPV) bindEntry(entryID int64) uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.loadAttempts) == 0 {
+		return p.state.Attempt
+	}
+	attempt := p.loadAttempts[0]
+	p.loadAttempts = p.loadAttempts[1:]
+	p.entryAttempts[entryID] = attempt
+	return attempt
 }
 
 func (p *MPV) updateProperty(name string, raw json.RawMessage) {
@@ -383,27 +531,35 @@ func (p *MPV) updateProperty(name string, raw json.RawMessage) {
 	p.publishState(state)
 }
 
-func (p *MPV) updatePlaybackEvent(ended bool, reason string, ready bool) {
+func (p *MPV) updatePlaybackEvent(attempt uint64, ended bool, reason string, ready bool) {
 	p.mu.Lock()
+	if attempt == 0 {
+		attempt = p.state.Attempt
+	}
+	p.state.Attempt = attempt
 	p.state.Ended, p.state.EndReason = ended, reason
 	p.state.Ready = ready
 	state := p.state
+	readyCh := p.ready[attempt]
 	p.mu.Unlock()
 	p.publishState(state)
+	if ready && readyCh != nil {
+		select {
+		case readyCh <- nil:
+		default:
+		}
+	}
 }
 
 func (p *MPV) publishState(state State) {
+	if state.Ready || state.Ended || state.Failure != nil {
+		// Lifecycle events must not be displaced by frequent property updates.
+		p.events <- state
+		return
+	}
 	select {
 	case p.events <- state:
-	default:
-		select {
-		case <-p.events:
-		default:
-		}
-		select {
-		case p.events <- state:
-		default:
-		}
+	default: // A later property snapshot supersedes this one.
 	}
 }
 
@@ -411,6 +567,11 @@ func (p *MPV) Close() error {
 	p.startMu.Lock()
 	defer p.startMu.Unlock()
 	p.mu.Lock()
+	if p.finalized {
+		p.mu.Unlock()
+		return nil
+	}
+	p.finalized = true
 	cmd, conn, dir := p.cmd, p.conn, p.dir
 	p.mu.Unlock()
 	if cmd == nil {
@@ -428,7 +589,13 @@ func (p *MPV) Close() error {
 	if cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}
-	_ = cmd.Wait()
+	if p.waitDone != nil {
+		select {
+		case <-p.waitDone:
+		case <-time.After(2 * time.Second):
+			return fmt.Errorf("timed out waiting for mpv to exit")
+		}
+	}
 	if dir != "" {
 		return os.RemoveAll(dir)
 	}

@@ -21,8 +21,9 @@ type directoryResult struct {
 	err     error
 }
 type loadResult struct {
-	path string
-	err  error
+	path    string
+	attempt uint64
+	err     error
 }
 type playerStateMsg playback.State
 type controlResult struct{ err error }
@@ -41,6 +42,7 @@ type Model struct {
 	query            string
 	filtering        bool
 	err              error
+	playbackErr      error
 	selected         string
 	pending          string
 	request          uint64
@@ -49,18 +51,31 @@ type Model struct {
 	playing          string
 	status           playback.State
 	awaitingPlayback bool
+	attempt          uint64
 	queue            []string
 	queueCursor      int
 	queueIndex       int
 	queueResumeIndex int
 	quitting         bool
+	appContext       context.Context
+	attemptContext   context.Context
+	cancelAttempt    context.CancelFunc
 }
 
 func New(browseDir, playFile string, player playback.Player) Model {
+	return NewWithContext(context.Background(), browseDir, playFile, player)
+}
+
+func NewWithContext(ctx context.Context, browseDir, playFile string, player playback.Player) Model {
 	m := NewWithLister(browseDir, browser.List)
 	m.pending = playFile
 	m.awaitingPlayback = playFile != ""
+	if playFile != "" {
+		m.attempt = 1
+	}
 	m.player = player
+	m.appContext = ctx
+	m.attemptContext, m.cancelAttempt = context.WithCancel(ctx)
 	return m
 }
 
@@ -101,14 +116,21 @@ func (m Model) control(run func(context.Context) error) tea.Cmd {
 }
 
 func (m Model) load(path string) tea.Cmd {
-	player := m.player
+	player, attempt := m.player, m.attempt
 	return func() tea.Msg {
 		if player == nil {
-			return loadResult{path: path, err: fmt.Errorf("playback is unavailable")}
+			return loadResult{path: path, attempt: attempt, err: fmt.Errorf("playback is unavailable")}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		base := m.attemptContext
+		if base == nil {
+			base = m.appContext
+		}
+		if base == nil {
+			base = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(base, 8*time.Second)
 		defer cancel()
-		return loadResult{path: path, err: player.Load(ctx, path)}
+		return loadResult{path: path, attempt: attempt, err: player.Load(ctx, attempt, path)}
 	}
 }
 
@@ -127,10 +149,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.err, m.entries = msg.err, msg.entries
+		if msg.err == nil {
+			m.err = m.playbackErr
+		}
 		m.applyFilter()
 		return m, nil
 	case FileSelectedMsg:
-		m.err = nil
+		if m.cancelAttempt != nil {
+			m.cancelAttempt()
+		}
+		base := m.appContext
+		if base == nil {
+			base = context.Background()
+		}
+		m.attemptContext, m.cancelAttempt = context.WithCancel(base)
+		m.err, m.playbackErr = nil, nil
 		m.selected = ""
 		m.pending, m.playing = msg.Path, ""
 		// The selected file starts a new playback attempt. Do not let the prior
@@ -139,13 +172,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status.Ready = false
 		m.status.HasTime, m.status.HasDuration = false, false
 		m.awaitingPlayback = true
+		m.attempt++
 		if m.queueIndex >= 0 {
 			m.queueResumeIndex = m.queueIndex + 1
 		}
 		m.queueIndex = -1
 		return m, m.load(msg.Path)
 	case loadResult:
-		if msg.path != m.pending {
+		if msg.path != m.pending || msg.attempt != m.attempt {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -159,8 +193,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case playerStateMsg:
+		if playback.State(msg).Attempt != 0 && playback.State(msg).Attempt != m.attempt {
+			return m, m.listenPlayer()
+		}
 		wasEnded := m.status.Ended
 		m.status = playback.State(msg)
+		if m.status.Failure != nil {
+			m.err, m.playbackErr = m.status.Failure, m.status.Failure
+			m.awaitingPlayback = false
+			m.playing = ""
+			return m, m.listenPlayer()
+		}
 		if m.status.Path != "" {
 			m.playing = m.status.Path
 			m.pending = m.playing
@@ -232,6 +275,16 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, m.control(func(ctx context.Context) error { return m.player.Fullscreen(ctx, !m.status.Fullscreen) })
 			}
 		}
+	}
+	if m.awaitingPlayback && m.player != nil && key.String() == "s" {
+		cancelAttempt := m.cancelAttempt
+		return m, m.control(func(ctx context.Context) error {
+			err := m.player.Stop(ctx)
+			if cancelAttempt != nil {
+				cancelAttempt()
+			}
+			return err
+		})
 	}
 	if m.player != nil {
 		switch key.String() {
@@ -324,10 +377,19 @@ func (m *Model) advanceQueue(index int) tea.Cmd {
 		return nil
 	}
 	path := m.queue[index]
-	m.err, m.pending, m.playing = nil, path, ""
+	if m.cancelAttempt != nil {
+		m.cancelAttempt()
+	}
+	base := m.appContext
+	if base == nil {
+		base = context.Background()
+	}
+	m.attemptContext, m.cancelAttempt = context.WithCancel(base)
+	m.err, m.playbackErr, m.pending, m.playing = nil, nil, path, ""
 	m.queueIndex = index
 	m.queueResumeIndex = index + 1
 	m.awaitingPlayback = true
+	m.attempt++
 	m.status.Ended, m.status.EndReason = false, ""
 	m.status.Ready = false
 	m.status.HasTime, m.status.HasDuration = false, false
@@ -424,8 +486,10 @@ func (m Model) View() tea.View {
 func formatTime(seconds float64) string { n := int(seconds); return fmt.Sprintf("%d:%02d", n/60, n%60) }
 func playbackEndLabel(reason string) string {
 	switch reason {
-	case "eof", "quit":
+	case "eof":
 		return "Ended"
+	case "quit", "stop":
+		return "Stopped"
 	case "error":
 		return "Failed"
 	default:

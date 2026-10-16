@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -43,9 +45,8 @@ func run(args []string) error {
 		return fmt.Errorf("clear terminal before starting TUI: %w", err)
 	}
 	player := playback.NewMPV()
-	_, err = tea.NewProgram(tui.New(startup.BrowseDir, startup.PlayFile, player)).Run()
-	if closeErr := player.Close(); err == nil {
-		err = closeErr
-	}
-	return err
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err = tea.NewProgram(tui.NewWithContext(ctx, startup.BrowseDir, startup.PlayFile, player)).Run()
+	cancel()
+	return errors.Join(err, player.Close())
 }
