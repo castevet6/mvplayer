@@ -28,7 +28,8 @@ make test
 make
 ```
 
-`make` builds the `mvplayer` executable in the project root. `make run` starts
+`make` builds the `build/mvplayer` executable. Build outputs live in the ignored
+`build/` directory. `make run` starts
 the interactive player, and `make run ARGS="/path/to/media-file"` passes a
 path argument. Environment variables such as `GOCACHE=/tmp/mvplayer-gocache`
 can be set before `make` or `make run` and are inherited by Go.
@@ -36,10 +37,10 @@ can be set before `make` or `make run` and are inherited by Go.
 Then run:
 
 ```sh
-./mvplayer --help
-./mvplayer
-./mvplayer /path/to/directory
-./mvplayer /path/to/media-file
+./build/mvplayer --help
+./build/mvplayer
+./build/mvplayer /path/to/directory
+./build/mvplayer /path/to/media-file
 ```
 
 Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback

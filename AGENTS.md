@@ -11,12 +11,12 @@ Currently, `PROJECT-PLAN.md` is the only project document; source code, tests, a
 Run these from the repository root once a Go module and the proposed entry point exist:
 
 - `go run ./cmd/mvplayer` — launch the application locally.
-- `go build ./cmd/mvplayer` — compile the player.
+- `go build -o build/mvplayer ./cmd/mvplayer` — compile the player into the ignored build output directory.
 - `go test ./...` — run all Go tests.
 - `go vet ./...` — check for common Go mistakes.
 - `gofmt -w <changed-files>` — format modified Go files.
 
-These are proposed standard Go commands; no build scripts or runnable application currently exist.
+The Makefile also builds to `build/mvplayer`. Keep generated executables and other local build outputs under `build/`, which is ignored by Git.
 
 ## Coding Style & Naming Conventions
 

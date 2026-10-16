@@ -100,6 +100,8 @@ Before implementation, record precise next/previous and current-entry removal se
 
 **Closure log (2026-10-16):** Reclassified normal mpv `quit` after video-window closure as Stopped, replaced raw process/IPC exit details with an actionable recovery message, and waited for mpv's final event before classifying process exit. The user's final retest confirmed the error is clear and the black screen did not recur.
 
+**Build output location:** The Makefile and documented direct build command now place the executable at `build/mvplayer`; `/build/` is ignored. `make run` still uses `go run` and Go's external build cache.
+
 ## M7 — Complete Responsive TUI
 
 **Implement:** Finish the side-by-side browser/queue layout, Tab focus switching, status area, shortcut hints, and narrow-terminal focused-pane layout. Keep selection and focus coherent after filtering, queue changes, and resizing. Present playback and browsing errors without obscuring navigation.
