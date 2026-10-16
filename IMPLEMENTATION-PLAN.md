@@ -4,7 +4,7 @@
 
 Follow this document when implementing the design in [PROJECT-PLAN.md](PROJECT-PLAN.md). That document defines product behavior; this document defines delivery order, verification gates, and progress. Its broad first milestone is split into the eight milestones below. All eight together deliver the initial release scope.
 
-Current state: M1–M3 are complete. The application supports CLI startup, local browsing, and real audio/video playback. M4 playback controls are implemented; the user has confirmed video replay, seeking, volume, stop, and the corrected TUI. Explicit video-window-to-TUI status synchronization verification remains pending. M5–M8 are not started.
+Current state: M1–M4 are complete. The application supports CLI startup, local browsing, real audio/video playback, playback controls, and synchronized player status. M5 implementation is complete and verification is pending the user's retest of the fixes; M6–M8 are not started.
 
 ## Working Through One Milestone
 
@@ -26,8 +26,8 @@ After each implementation session, update the progress table and append a work-l
 | M1 | Go foundation and CLI contract | complete | `go test ./...` and `go vet ./...` passed; `go build -buildvcs=false ./...` passed; built executable help and pseudo-terminal launch/quit passed. |
 | M2 | Responsive local file browser | complete | `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go vet ./...`, and `go build -buildvcs=false ./...` passed; built executable launched in a pseudo-terminal, rendered entries, and quit with terminal reset. |
 | M3 | Single-file video and audio playback | complete | Go tests/race/vet/build and Makefile targets passed. Under Wayland with mpv 0.40.0, video, WAV, and cover-art MP3 loaded; video→audio and audio→video TUI selections worked; shutdown left no mpv process or socket directory. User visually confirmed video window playback and audio playback without a separate media window. |
-| M4 | Playback controls and synchronized status | verification pending | Go tests/race/vet/build and real-mpv replay/control checks passed. User confirmed first-Enter replay, seek, volume, stop, and stable TUI rendering/navigation; earlier checks confirmed pause/fullscreen and audio controls. Explicit video-window-to-TUI status synchronization verification remains pending. |
-| M5 | Mixed-media queue | not started | — |
+| M4 | Playback controls and synchronized status | complete | Go tests/race/vet/build and real-mpv replay/control checks passed. User confirmed first-Enter replay, seek, volume, stop, and stable TUI rendering/navigation; earlier checks confirmed pause/fullscreen and audio controls. User's acceptance of the corrected synchronized TUI closes the final pending desktop check. |
+| M5 | Mixed-media queue | verification pending | Full Go tests/race/vet/build pass. Real mpv queue integration passes video → audio → video and audio → video → audio, including correct ready/Playing status. User retest of ASCII queue markers and the corrected live TUI transitions remains pending. |
 | M6 | Recovery and lifecycle reliability | not started | — |
 | M7 | Complete responsive TUI | not started | — |
 | M8 | Debian acceptance and usage documentation | not started | — |
@@ -73,6 +73,8 @@ After each implementation session, update the progress table and append a work-l
 **Complete when:** Displayed status follows observed player state, commands remain responsive, and both control surfaces behave consistently.
 
 ## M5 — Mixed-Media Queue
+
+**Status and semantics (2026-10-16):** M4's sole remaining pending item was explicit user confirmation of video-window-to-TUI status synchronization. The latest user acceptance that the corrected TUI and controls work closes that check; the prior Go, race, vet, build, and real-mpv evidence remains recorded in the M4 log. M4 is complete. For M5, the queue contains entries in insertion order and allows duplicates; its cursor identifies the current queue item, and its resume index identifies the next pending item. Enter plays immediately and leaves pending queue entries untouched, including when queue playback is active. `a` appends the highlighted media file. `d` removes the selected pending queue entry; it does not remove or interrupt the current item. Next starts the first pending entry, or advances to the next pending entry after a queue item; it does not alter the queue on exhaustion. Previous replays the current queue item when one is active; for an immediate-play item it starts the first pending item. At the beginning or with no pending item, previous is a no-op. Natural EOF advances once to the next pending item; explicit stop, load failure, and error EOF do not advance.
 
 **Implement:** Add an application-owned queue with enqueue, removal, selection, next/previous actions, and insertion-order playback. Enter in the browser plays immediately while preserving pending entries. Advance only on normal end-of-file. Stop at queue exhaustion and on playback failure, keeping remaining entries intact. Keep queue state in memory only.
 
@@ -246,6 +248,54 @@ Verification commands and results: Used the passing Go tests, race checks, vet, 
 Manual environment and results: User confirmed playback controls and the corrected TUI in the interactive desktop session. Existing mpv-shot0001.jpg through mpv-shot0004.jpg show the synthetic video test pattern captured during the earlier control investigation.
 Failures or checks still pending: No reported playback or TUI defect remains. Explicit video-window-to-TUI status synchronization verification remains for M4; full Debian Wayland/X11 acceptance remains for M8.
 Milestone status and next action: Reported fixes accepted and ready to commit; finish the remaining M4 verification before starting M5.
+
+Date / milestone / phase: 2026-10-16 / M4 / closed
+Changes completed: Closed M4 after the user confirmed that the corrected TUI and playback controls work. Updated the tracker and current-state summary.
+Decisions and rationale: The only prior pending item was explicit confirmation that video-window control changes synchronize to the TUI. The user's latest acceptance of the corrected synchronized TUI closes that check. The earlier manual report had not explicitly named the status row, which is why the tracker remained pending despite control fixes and tests.
+Verification commands and results: Prior M4 Go tests, race checks, vet, build, and real-mpv replay/control checks remain recorded in the preceding work-log entries.
+Manual environment and results: User accepted the corrected playback controls and stable TUI rendering/navigation after restarting with the stderr routing fix.
+Failures or checks still pending: None for M4. Full Debian Wayland/X11 acceptance remains in M8.
+Milestone status and next action: M4 complete; M5 preparation and implementation started.
+
+Date / milestone / phase: 2026-10-16 / M5 / implementation
+Changes completed: Recorded M5 queue semantics and added an application-owned insertion-order queue with duplicate support, append/removal, queue selection, next/previous actions, immediate-play preservation, and natural-EOF advancement. Added queue rendering/shortcut help and README instructions. Added focused tests for queue advancement, stale EOF events, immediate play, enqueue/removal, and failed loads.
+Decisions and rationale: Pending queue items remain in the queue after playback; the current queue index distinguishes played/current entries from removable pending entries. `a` enqueues, `[`/`]` select a queue row, `d` removes a pending row, `n` advances, and `p` replays the active queued item or starts the first pending item. Browser Enter preserves all pending entries. Only an observed natural EOF on an active queue item advances automatically.
+Verification commands and results: `gofmt -w internal/tui/model.go internal/tui/model_test.go` and `GOCACHE=/tmp/mvplayer-gocache go test ./...` passed.
+Manual environment and results: Not performed for this implementation pass.
+Failures or checks still pending: Shared race/vet/build checks and M5 verification of stop, exhaustion, boundary behavior, and mixed real-media playback remain. Queue selection uses dedicated `[`/`]` keys pending the full focus/layout work in M7.
+Milestone status and next action: M5 in progress; continue implementation and verification.
+
+Date / milestone / phase: 2026-10-16 / M5 / implementation update
+Changes completed: Tracked the resume position across immediate playback so `n` resumes at the next pending queue entry instead of replaying the already-played prefix. Added coverage for previous/next boundaries, immediate-play resume, exhaustion, and re-playing a prior queued item.
+Decisions and rationale: Queue history remains visible in insertion order; the resume index identifies the pending suffix. Removing a row before the resume point adjusts the index, and past/current entries cannot be removed as pending entries.
+Verification commands and results: `gofmt -w internal/tui/model.go internal/tui/model_test.go`, `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, and `git diff --check` passed.
+Manual environment and results: Not performed for queue playback in this update.
+Failures or checks still pending: Verify explicit stop and failed media do not advance, queue exhaustion in the TUI, and real video → audio → video and audio → video → audio playback. Debian Wayland/X11 acceptance remains in M8.
+Milestone status and next action: M5 remains in progress; complete the outstanding verification and refine behavior if needed.
+
+Date / milestone / phase: 2026-10-16 / M5 / bug fixes and verification pending
+Changes completed: Added an explicit `Ready` playback state driven by mpv's `file-loaded` event, so queued items leave Loading even when `time-pos` is not yet available. Queue state resets readiness on each new load, and natural EOF advancement waits until the current item is ready. Fixed the listener chain so an EOF transition batches the next queue load and the next player-event listener; the missing listener was the cause of the persistent Loading state and stalled queue. Replaced the unsupported Unicode current-item marker with ASCII `*`, keeping `>` for the selected row and `>*` when both refer to one row. Added regression coverage for readiness without time-pos, listener continuity after EOF, playback failure without auto-advance, queue markers, and real mixed-media queue transitions. Addressed the request to use a fake-player failure case where no corrupt fixture was available.
+Decisions and rationale: Playback readiness is an mpv lifecycle event, not an inference from time-position availability. Requiring readiness before auto-advance prevents stale end-file snapshots from skipping a just-requested next item. ASCII markers render on terminals without the relevant Unicode glyph support.
+Verification commands and results: Readiness, marker, and listener-continuity regressions were confirmed failing before their fixes. `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, and `git diff --check` passed. With Unix socket access, `env MVPLAYER_MPV_QUEUE_INTEGRATION=1 GOCACHE=/tmp/mvplayer-gocache go test ./internal/tui -run '^TestMixedMediaQueueIntegration$' -count=1 -v` passed video → audio → video, audio → video → audio, and audio → audio → audio through the same player-listener command flow used by Bubble Tea. The sandbox denied mpv's Unix socket, so the integration command was rerun outside it.
+Manual environment and results: User's original M5 findings are preserved in `M5-VERIFICATIONS.md`; no post-fix physical-terminal retest has been reported yet.
+Failures or checks still pending: User should retest queue marker rendering, Loading-to-Playing status, both mixed-media orders, and natural EOF advancement in the interactive terminal. Stop, exhaustion, immediate-play preservation, and failed-playback behavior were reported working or covered by existing/focused tests.
+Milestone status and next action: M5 verification pending the user's desktop retest.
+
+Date / milestone / phase: 2026-10-16 / M5 / queue listener regression fix
+Changes completed: Fixed the remaining reported Loading state and stalled queue. Natural EOF handling had returned only the next item's load command, replacing the one-shot Bubble Tea player listener. It now schedules the load and next listener together. Added a command-boundary regression that failed before the fix because EOF returned `loadResult` instead of a batch, then verified the next `Ready` event is consumed.
+Decisions and rationale: Each playback event listener consumes exactly one state message and must be rescheduled for the next one. Queue advancement is the only branch that had returned a load command instead of the listener, so it silently stopped observing subsequent mpv state.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...`, and `git diff --check` passed. The opt-in real-mpv test passed all three queue sequences, driven through the Bubble Tea command/listener flow.
+Manual environment and results: Awaiting the user's retest in the interactive terminal.
+Failures or checks still pending: Confirm in the TUI that each queue transition leaves Loading, updates the current row, and advances to the third item in the reported sequences.
+Milestone status and next action: M5 remains verification pending; user retest the updated build.
+
+Date / milestone / phase: 2026-10-16 / pre-M5 manual verification setup
+Changes completed: Configured the TUI to clear the screen on startup and render in Bubble Tea's alternate screen so it uses the full terminal window. Moved the downloaded video and audio fixtures into the repository-root `testdata/` directory and added `/testdata/` to `.gitignore`.
+Decisions and rationale: The startup clear is sent through Bubble Tea's `ClearScreen` message from `Init`, keeping terminal writes under the renderer. The alternate-screen view provides full-window display and automatic terminal restoration when the application exits. The user requested that fixtures remain local and ignored by Git.
+Verification commands and results: Ran `gofmt` and `git diff --check`; tests were not run so the user can continue with the requested verification session.
+Manual environment and results: Confirmed both fixture files are present in `testdata/` with `ls -lh`; confirmed Git reports the directory as ignored.
+Failures or checks still pending: User will continue M5 verification with these fixtures. Startup full-screen behavior has not yet been manually observed.
+Milestone status and next action: M5 remains in progress; user can now run the planned playback checks using `testdata/mvplayer-sample-video.webm` and `testdata/mvplayer-sample-audio.wav`.
 
 Append one entry per implementation session using this template:
 

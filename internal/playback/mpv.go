@@ -48,6 +48,7 @@ type State struct {
 	Path                 string
 	Paused               bool
 	Ended                bool
+	Ready                bool
 	EndReason            string
 	Time, Duration       float64
 	Volume               float64
@@ -323,10 +324,12 @@ func (p *MPV) readLoop(conn net.Conn) {
 			continue
 		}
 		switch msg.Event {
-		case "start-file", "file-loaded":
-			p.updatePlaybackEvent(false, "")
+		case "start-file":
+			p.updatePlaybackEvent(false, "", false)
+		case "file-loaded":
+			p.updatePlaybackEvent(false, "", true)
 		case "end-file":
-			p.updatePlaybackEvent(true, msg.Reason)
+			p.updatePlaybackEvent(true, msg.Reason, false)
 		}
 		if msg.ID == 0 {
 			continue
@@ -380,9 +383,10 @@ func (p *MPV) updateProperty(name string, raw json.RawMessage) {
 	p.publishState(state)
 }
 
-func (p *MPV) updatePlaybackEvent(ended bool, reason string) {
+func (p *MPV) updatePlaybackEvent(ended bool, reason string, ready bool) {
 	p.mu.Lock()
 	p.state.Ended, p.state.EndReason = ended, reason
+	p.state.Ready = ready
 	state := p.state
 	p.mu.Unlock()
 	p.publishState(state)

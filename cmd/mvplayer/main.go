@@ -39,6 +39,9 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if _, err := fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H"); err != nil {
+		return fmt.Errorf("clear terminal before starting TUI: %w", err)
+	}
 	player := playback.NewMPV()
 	_, err = tea.NewProgram(tui.New(startup.BrowseDir, startup.PlayFile, player)).Run()
 	if closeErr := player.Close(); err == nil {

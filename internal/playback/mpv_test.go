@@ -93,8 +93,8 @@ func TestCommandCorrelatesResponseAndIgnoresEvents(t *testing.T) {
 	}
 	select {
 	case state := <-p.Events():
-		if state.Ended {
-			t.Fatalf("file-loaded did not clear ended state: %#v", state)
+		if state.Ended || !state.Ready {
+			t.Fatalf("file-loaded did not clear ended state and mark ready: %#v", state)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("file-loaded state not delivered")

@@ -45,6 +45,12 @@ Then run:
 Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
 requires mpv; browsing remains available when mpv is not installed.
 
+Press `a` on a browser media entry to append it to the in-memory queue. Use `[` and
+`]` to select a pending queue entry and `d` to remove it. `n` starts the first
+queued item or advances to the next one; `p` replays the current queued item or
+starts the first pending item. Enter plays immediately without changing pending
+queue entries. The queue accepts duplicates and advances after natural EOF.
+
 During playback, these shortcuts work in both the terminal and the video window:
 Space toggles pause, Left/Right (or `h`/`l`) seek by five seconds, `+`/`-`
 adjust volume (`=` also raises it), `s` stops playback, and `f` toggles fullscreen

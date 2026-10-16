@@ -49,6 +49,10 @@ type Model struct {
 	playing          string
 	status           playback.State
 	awaitingPlayback bool
+	queue            []string
+	queueCursor      int
+	queueIndex       int
+	queueResumeIndex int
 	quitting         bool
 }
 
@@ -63,7 +67,7 @@ func New(browseDir, playFile string, player playback.Player) Model {
 // NewWithLister allows filesystem errors and delayed results to be exercised
 // without relying on host permissions or a real filesystem race.
 func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error)) Model {
-	return Model{browseDir: browseDir, list: list, request: 1}
+	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -132,8 +136,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The selected file starts a new playback attempt. Do not let the prior
 		// file's EOF/error status leak into this attempt while mpv switches files.
 		m.status.Ended, m.status.EndReason = false, ""
+		m.status.Ready = false
 		m.status.HasTime, m.status.HasDuration = false, false
 		m.awaitingPlayback = true
+		if m.queueIndex >= 0 {
+			m.queueResumeIndex = m.queueIndex + 1
+		}
+		m.queueIndex = -1
 		return m, m.load(msg.Path)
 	case loadResult:
 		if msg.path != m.pending {
@@ -150,11 +159,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case playerStateMsg:
+		wasEnded := m.status.Ended
 		m.status = playback.State(msg)
 		if m.status.Path != "" {
 			m.playing = m.status.Path
 			m.pending = m.playing
-			if m.awaitingPlayback && m.status.Path == m.pending && m.status.HasTime {
+			if m.awaitingPlayback && m.status.Path == m.pending && (m.status.Ready || m.status.HasTime) {
 				m.awaitingPlayback = false
 			}
 		} else if m.status.Ended {
@@ -163,6 +173,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.playing = m.pending
 		} else if !m.awaitingPlayback {
 			m.playing, m.pending = "", ""
+		}
+		if !wasEnded && !m.awaitingPlayback && m.status.Ended && m.status.EndReason == "eof" && m.queueIndex >= 0 {
+			return m, tea.Batch(m.advanceQueue(m.queueIndex+1), m.listenPlayer())
 		}
 		return m, m.listenPlayer()
 	case controlResult:
@@ -220,6 +233,50 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if m.player != nil {
+		switch key.String() {
+		case "n":
+			return m, m.nextQueue()
+		case "p":
+			if m.queueIndex > 0 {
+				return m, m.advanceQueue(m.queueIndex - 1)
+			}
+			if m.queueIndex < 0 && m.queueResumeIndex < len(m.queue) {
+				return m, m.advanceQueue(m.queueResumeIndex)
+			}
+		case "a":
+			if m.cursor >= 0 && m.cursor < len(m.visible) && m.visible[m.cursor].Media {
+				m.queue = append(m.queue, m.visible[m.cursor].Path)
+				if m.queueCursor < 0 {
+					m.queueCursor = 0
+				}
+			}
+		case "d":
+			if m.queueCursor >= 0 && m.queueCursor < len(m.queue) {
+				if (m.queueIndex >= 0 && m.queueCursor <= m.queueIndex) || (m.queueIndex < 0 && m.queueCursor < m.queueResumeIndex) {
+					break
+				}
+				m.queue = append(m.queue[:m.queueCursor], m.queue[m.queueCursor+1:]...)
+				if m.queueIndex > m.queueCursor {
+					m.queueIndex--
+				}
+				if m.queueResumeIndex > m.queueCursor {
+					m.queueResumeIndex--
+				}
+				if m.queueCursor >= len(m.queue) {
+					m.queueCursor = len(m.queue) - 1
+				}
+			}
+		case "]":
+			if m.queueCursor+1 < len(m.queue) {
+				m.queueCursor++
+			}
+		case "[":
+			if m.queueCursor > 0 {
+				m.queueCursor--
+			}
+		}
+	}
 	switch key.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -255,6 +312,28 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) nextQueue() tea.Cmd {
+	if m.queueIndex < 0 {
+		return m.advanceQueue(m.queueResumeIndex)
+	}
+	return m.advanceQueue(m.queueIndex + 1)
+}
+
+func (m *Model) advanceQueue(index int) tea.Cmd {
+	if index < 0 || index >= len(m.queue) {
+		return nil
+	}
+	path := m.queue[index]
+	m.err, m.pending, m.playing = nil, path, ""
+	m.queueIndex = index
+	m.queueResumeIndex = index + 1
+	m.awaitingPlayback = true
+	m.status.Ended, m.status.EndReason = false, ""
+	m.status.Ready = false
+	m.status.HasTime, m.status.HasDuration = false, false
+	return m.load(path)
+}
+
 func (m *Model) applyFilter() {
 	m.visible = browser.Filter(m.entries, m.query)
 	if m.cursor >= len(m.visible) {
@@ -267,7 +346,9 @@ func (m *Model) applyFilter() {
 
 func (m Model) View() tea.View {
 	if m.quitting {
-		return tea.NewView("Goodbye.\n")
+		view := tea.NewView("Goodbye.\n")
+		view.AltScreen = true
+		return view
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "MVPLAYER  %s\n\n", m.browseDir)
@@ -296,6 +377,23 @@ func (m Model) View() tea.View {
 	if m.selected != "" {
 		fmt.Fprintf(&b, "\nSelected: %s\n", m.selected)
 	}
+	if len(m.queue) > 0 {
+		b.WriteString("\nQueue:\n")
+		for i, path := range m.queue {
+			mark := "  "
+			if i == m.queueCursor {
+				mark = "> "
+			}
+			if i == m.queueIndex {
+				if i == m.queueCursor {
+					mark = ">*"
+				} else {
+					mark = "* "
+				}
+			}
+			fmt.Fprintf(&b, "%s%s\n", mark, filepath.Base(path))
+		}
+	}
 	if m.pending != "" {
 		stateLabel := "Playing"
 		switch {
@@ -317,8 +415,10 @@ func (m Model) View() tea.View {
 		}
 		fmt.Fprintf(&b, "  Volume: %.0f%%\n", m.status.Volume)
 	}
-	b.WriteString("\n↑/k, ↓/j move • Enter open/play • Backspace parent • / filter • Space pause • ←/→ seek • +/- volume • s stop • f fullscreen • q quit\n")
-	return tea.NewView(b.String())
+	b.WriteString("\n↑/k, ↓/j move • Enter open/play • a enqueue • [/] queue select • d remove • n next • p previous • Backspace parent • / filter • Space pause • ←/→ seek • +/- volume • s stop • f fullscreen • q quit\n")
+	view := tea.NewView(b.String())
+	view.AltScreen = true
+	return view
 }
 
 func formatTime(seconds float64) string { n := int(seconds); return fmt.Sprintf("%d:%02d", n/60, n%60) }

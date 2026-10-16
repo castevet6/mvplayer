@@ -54,13 +54,13 @@ func TestSelectedFileLoadsThroughPlayer(t *testing.T) {
 	player := &fakePlayer{}
 	m := New(t.TempDir(), "", player)
 	m.selected = "/tmp/clip.mp4"
-	m.status = playback.State{Ended: true, EndReason: "error", HasTime: true, HasDuration: true}
+	m.status = playback.State{Ended: true, Ready: true, EndReason: "error", HasTime: true, HasDuration: true}
 	updated, cmd := m.Update(FileSelectedMsg{Path: "/tmp/clip.mp4"})
 	if cmd == nil {
 		t.Fatal("selection did not schedule playback")
 	}
 	selected := updated.(Model)
-	if selected.status.Ended || selected.status.HasTime || selected.status.HasDuration {
+	if selected.status.Ended || selected.status.Ready || selected.status.HasTime || selected.status.HasDuration {
 		t.Fatalf("new selection retained stale playback status: %#v", selected.status)
 	}
 	result := cmd()
@@ -194,6 +194,95 @@ func TestEnterReloadsAfterEOFIntegration(t *testing.T) {
 	}
 }
 
+func TestMixedMediaQueueIntegration(t *testing.T) {
+	if os.Getenv("MVPLAYER_MPV_QUEUE_INTEGRATION") != "1" {
+		t.Skip("set MVPLAYER_MPV_QUEUE_INTEGRATION=1 to run real mpv queue checks")
+	}
+	video := filepath.Join("..", "..", "testdata", "mvplayer-check-video.mp4")
+	audio := filepath.Join("..", "..", "testdata", "mvplayer-check-audio.wav")
+	coverAudio := filepath.Join("..", "..", "testdata", "mvplayer-check-cover.mp3")
+	sampleAudio := filepath.Join("..", "..", "testdata", "mvplayer-sample-audio.wav")
+	sequences := [][]string{{video, audio, video}, {audio, video, audio}, {audio, coverAudio, sampleAudio}}
+	for _, sequence := range sequences {
+		p := playback.NewMPV("--vo=null", "--ao=null", "--end=0.5")
+		m := New(t.TempDir(), "", p)
+		m.queue = append([]string(nil), sequence...)
+		m.queueCursor = 0
+		messages := make(chan tea.Msg, 32)
+		stop := make(chan struct{})
+		var dispatch func(tea.Cmd)
+		dispatch = func(cmd tea.Cmd) {
+			if cmd == nil {
+				return
+			}
+			go func() {
+				msg := cmd()
+				if batch, ok := msg.(tea.BatchMsg); ok {
+					for _, child := range batch {
+						dispatch(child)
+					}
+					return
+				}
+				if msg == nil {
+					return
+				}
+				select {
+				case messages <- msg:
+				case <-stop:
+				}
+			}()
+		}
+		dispatch(m.listenPlayer())
+		updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+		m = updated.(Model)
+		dispatch(cmd)
+		var readyPaths []string
+		deadline := time.NewTimer(20 * time.Second)
+		finished := false
+		for !finished {
+			select {
+			case msg := <-messages:
+				state, isPlayerState := msg.(playerStateMsg)
+				updated, next := m.Update(msg)
+				m = updated.(Model)
+				if m.err != nil {
+					_ = p.Close()
+					t.Fatalf("queue load failed: %v", m.err)
+				}
+				if isPlayerState && state.Ready && state.Path != "" && (len(readyPaths) == 0 || readyPaths[len(readyPaths)-1] != state.Path) {
+					if m.awaitingPlayback || !strings.Contains(m.View().Content, "Now playing: "+state.Path+"  Playing") {
+						_ = p.Close()
+						t.Fatalf("ready item still displayed as Loading: path=%q awaiting=%t view=%s", state.Path, m.awaitingPlayback, m.View().Content)
+					}
+					readyPaths = append(readyPaths, state.Path)
+				}
+				finished = len(readyPaths) == len(sequence) && m.queueIndex == len(sequence)-1 && !m.awaitingPlayback && m.status.Ended && m.status.EndReason == "eof"
+				if !finished {
+					dispatch(next)
+				}
+			case <-deadline.C:
+				close(stop)
+				_ = p.Close()
+				t.Fatalf("queue did not finish: paths=%v index=%d status=%#v error=%v", readyPaths, m.queueIndex, m.status, m.err)
+			}
+		}
+		deadline.Stop()
+		close(stop)
+		if err := p.Close(); err != nil {
+			t.Fatalf("close mpv: %v", err)
+		}
+		if len(readyPaths) != len(sequence) {
+			t.Fatalf("expected %d loaded queue items in %v, got %v", len(sequence), sequence, readyPaths)
+		}
+		for i := range sequence {
+			want, _ := filepath.Abs(sequence[i])
+			if readyPaths[i] != want {
+				t.Fatalf("queue order: got %v, want %v", readyPaths, sequence)
+			}
+		}
+	}
+}
+
 func TestPlaybackControlsAndObservedStatus(t *testing.T) {
 	p := &fakePlayer{}
 	m := New(t.TempDir(), "", p)
@@ -240,6 +329,239 @@ func TestFullscreenDisabledForAudio(t *testing.T) {
 	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'f', Text: "f"}))
 	if cmd != nil || updated.(Model).player == nil || p.fullscreens != 0 {
 		t.Fatal("fullscreen should be unavailable for audio")
+	}
+}
+
+func TestMixedQueueControlsAndNaturalEOF(t *testing.T) {
+	p := &fakePlayer{}
+	first, second := "/media/first.mp4", "/media/second.mp3"
+	m := New(t.TempDir(), "", p)
+	m.queue = []string{first, second}
+	m.queueCursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("next did not start first queued item")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	if m.queueIndex != 0 || m.pending != first || len(m.queue) != 2 {
+		t.Fatalf("first queued load: index=%d pending=%q queue=%v", m.queueIndex, m.pending, m.queue)
+	}
+	updated, _ = m.Update(playerStateMsg(playback.State{Path: first, HasTime: true, Time: 0.1}))
+	m = updated.(Model)
+	_ = p.Events()
+	p.events <- playback.State{Path: second, Ready: true}
+	updated, cmd = m.Update(playerStateMsg(playback.State{Path: first, Ended: true, EndReason: "eof"}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 1 || m.pending != second {
+		t.Fatalf("EOF did not advance: index=%d pending=%q cmd=%v", m.queueIndex, m.pending, cmd != nil)
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("EOF transition did not batch load and listener: %T", cmd())
+	}
+	for _, child := range batch {
+		msg := child()
+		if result, ok := msg.(loadResult); ok {
+			updated, _ = m.Update(result)
+			m = updated.(Model)
+		} else if state, ok := msg.(playerStateMsg); ok {
+			updated, _ = m.Update(state)
+			m = updated.(Model)
+		}
+	}
+	if len(p.paths) != 2 || p.paths[1] != second {
+		t.Fatalf("loaded paths = %v", p.paths)
+	}
+	// A delayed duplicate EOF from the prior item must not skip the new one.
+	updated, cmd = m.Update(playerStateMsg(playback.State{Ended: true, EndReason: "eof"}))
+	m = updated.(Model)
+	if m.queueIndex != 1 || m.pending != second {
+		t.Fatal("duplicate/stale EOF advanced queue")
+	}
+	// A failed subsequent item remains in the queue and does not trigger an
+	// automatic attempt at another item.
+	failed := "/media/failed.wav"
+	m.queue = append(m.queue, failed)
+	p.err = errors.New("load failed")
+	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("next did not attempt the queued item")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	if m.err == nil || len(m.queue) != 3 || m.queueIndex != 2 {
+		t.Fatalf("failed next did not preserve queue: error=%v index=%d queue=%v", m.err, m.queueIndex, m.queue)
+	}
+}
+
+func TestImmediatePlayPreservesQueueAndEnqueueRemoval(t *testing.T) {
+	p := &fakePlayer{}
+	root := t.TempDir()
+	queued := filepath.Join(root, "queued.mp3")
+	chosen := filepath.Join(root, "chosen.mp4")
+	m := NewWithLister(root, func(string) ([]browser.Entry, error) { return nil, nil })
+	m.player = p
+	m.queue = []string{queued}
+	m.queueCursor = 0
+	m.visible = []browser.Entry{{Name: "chosen.mp4", Path: chosen, Media: true}}
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'a', Text: "a"}))
+	m = updated.(Model)
+	if cmd != nil || len(m.queue) != 2 || m.queue[1] != chosen {
+		t.Fatalf("enqueue failed: %v", m.queue)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	m = updated.(Model)
+	updated, cmd = m.Update(FileSelectedMsg{Path: chosen})
+	m = updated.(Model)
+	if cmd == nil || len(m.queue) != 2 || m.queueIndex != -1 {
+		t.Fatalf("immediate play changed queue: queue=%v index=%d", m.queue, m.queueIndex)
+	}
+	// Move to and remove the second pending entry.
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: ']', Text: "]"}))
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
+	m = updated.(Model)
+	if len(m.queue) != 1 || m.queue[0] != queued {
+		t.Fatalf("pending removal failed: %v", m.queue)
+	}
+}
+
+func TestQueueBoundariesPreviousAndImmediateResume(t *testing.T) {
+	p := &fakePlayer{}
+	paths := []string{"/q/a.mp4", "/q/b.mp3", "/q/c.mp4"}
+	m := New(t.TempDir(), "", p)
+	m.queue = append([]string(nil), paths...)
+	m.queueCursor = 0
+	// Start the first item, then previous at its boundary is a no-op.
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'p', Text: "p"}))
+	m = updated.(Model)
+	if cmd != nil || len(p.paths) != 1 {
+		t.Fatal("previous at queue start should be a no-op")
+	}
+	// Finish the first item, then immediately play another file.
+	updated, _ = m.Update(playerStateMsg(playback.State{Path: paths[0], HasTime: true, Time: 1}))
+	m = updated.(Model)
+	updated, cmd = m.Update(playerStateMsg(playback.State{Path: paths[0], Ended: true, EndReason: "eof"}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 1 {
+		t.Fatal("first EOF did not select second queue item")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	updated, _ = m.Update(FileSelectedMsg{Path: "/q/instant.wav"})
+	m = updated.(Model)
+	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 2 || m.pending != paths[2] {
+		t.Fatalf("next after immediate play did not resume pending entry: index=%d pending=%q", m.queueIndex, m.pending)
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	// Exhaustion leaves queue state intact; previous replays the current queue item.
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	if m.queueIndex != 2 || len(m.queue) != 3 {
+		t.Fatal("next at exhaustion changed queue state")
+	}
+	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'p', Text: "p"}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 1 || m.pending != paths[1] {
+		t.Fatal("previous did not load prior queue item")
+	}
+}
+
+func TestQueuedItemReadinessWithoutTimePositionAndNaturalEOF(t *testing.T) {
+	p := &fakePlayer{}
+	first, second := "/q/short-audio.mp3", "/q/next.mp4"
+	m := New(t.TempDir(), "", p)
+	m.queue = []string{first, second}
+	m.queueCursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	// mpv can signal file-loaded before it has a useful time-pos snapshot.
+	updated, _ = m.Update(playerStateMsg(playback.State{Path: first, Ready: true}))
+	m = updated.(Model)
+	if m.awaitingPlayback || !strings.Contains(m.View().Content, "Now playing: "+first+"  Playing") {
+		t.Fatalf("file-loaded did not end Loading without time-pos: awaiting=%t view=%s", m.awaitingPlayback, m.View().Content)
+	}
+	updated, cmd = m.Update(playerStateMsg(playback.State{Path: first, Ended: true, EndReason: "eof"}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 1 || m.pending != second {
+		t.Fatalf("audio EOF did not advance: index=%d pending=%q cmd=%v", m.queueIndex, m.pending, cmd != nil)
+	}
+}
+
+func TestQueueEOFAdvanceKeepsListeningForNextItem(t *testing.T) {
+	p := &fakePlayer{events: make(chan playback.State, 1)}
+	first, second := "/q/first.mp4", "/q/second.mp3"
+	p.events <- playback.State{Path: second, Ready: true}
+	m := New(t.TempDir(), "", p)
+	m.queue = []string{first, second}
+	m.queueIndex = 0
+	m.queueResumeIndex = 1
+	m.pending, m.playing = first, first
+	m.status = playback.State{Path: first, Ready: true}
+	updated, cmd := m.Update(playerStateMsg(playback.State{Path: first, Ended: true, EndReason: "eof"}))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("natural EOF did not schedule queue advancement")
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("queue advancement must load the next item and keep listening; got %T (%#v)", cmd(), cmd())
+	}
+	var sawReady bool
+	for _, command := range batch {
+		msg := command()
+		if ready, ok := msg.(playerStateMsg); ok {
+			updated, _ := m.Update(ready)
+			m = updated.(Model)
+			sawReady = true
+		}
+	}
+	if !sawReady || m.awaitingPlayback || m.pending != second {
+		t.Fatalf("next item's player state was not consumed: awaiting=%t pending=%q", m.awaitingPlayback, m.pending)
+	}
+}
+
+func TestQueuedFailureDoesNotAutoAdvance(t *testing.T) {
+	p := &fakePlayer{}
+	first, second := "/q/broken.wav", "/q/valid.mp3"
+	m := New(t.TempDir(), "", p)
+	m.queue = []string{first, second}
+	m.queueCursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	m = updated.(Model)
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	updated, _ = m.Update(playerStateMsg(playback.State{Path: first, Ready: true}))
+	m = updated.(Model)
+	updated, cmd = m.Update(playerStateMsg(playback.State{Path: first, Ended: true, EndReason: "error"}))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("failure event did not continue listening for player state")
+	}
+	if len(p.paths) != 1 || m.queueIndex != 0 || m.queue[1] != second {
+		t.Fatalf("failed item advanced queue: paths=%v index=%d queue=%v", p.paths, m.queueIndex, m.queue)
+	}
+}
+
+func TestQueueMarkersUseASCIIAndDistinguishSelection(t *testing.T) {
+	m := NewWithLister(t.TempDir(), func(string) ([]browser.Entry, error) { return nil, nil })
+	m.queue = []string{"/q/selected.mp3", "/q/playing.mp4"}
+	m.queueCursor, m.queueIndex = 0, 1
+	view := m.View().Content
+	if !strings.Contains(view, "> selected.mp3") || !strings.Contains(view, "* playing.mp4") || strings.Contains(view, "▶") {
+		t.Fatalf("queue markers are not terminal-safe/distinct: %s", view)
 	}
 }
 
