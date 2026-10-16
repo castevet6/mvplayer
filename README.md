@@ -47,6 +47,13 @@ the interactive player, and `make run ARGS="/path/to/media-file"` passes a
 path argument. Environment variables such as `GOCACHE=/tmp/mvplayer-gocache`
 can be set before `make` or `make run` and are inherited by Go.
 
+To build and install MVPLAYER system-wide at `/usr/local/bin/mvplayer`, run
+`./scripts/install.sh` or `make install` from the project directory. The script
+builds the executable first, then uses `sudo` for the installation when needed.
+You can remove the installed executable with `./scripts/uninstall.sh` or
+`make uninstall`. Both scripts require Go 1.26 or newer to build; playback also
+requires mpv.
+
 Then run:
 
 ```sh

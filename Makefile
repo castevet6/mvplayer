@@ -1,4 +1,4 @@
-.PHONY: all build run test clean
+.PHONY: all build run test install uninstall clean
 
 BUILD_DIR ?= build
 BIN ?= $(BUILD_DIR)/mvplayer
@@ -15,6 +15,12 @@ run:
 
 test:
 	go test ./...
+
+install:
+	./scripts/install.sh
+
+uninstall:
+	./scripts/uninstall.sh
 
 clean:
 	rm -f "$(BIN)"
