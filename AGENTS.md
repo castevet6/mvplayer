@@ -2,9 +2,9 @@
 
 ## Project Scope & Structure
 
-MVPLAYER (MyVideoPlayer) is a planned Linux CLI video player with a terminal UI, primarily targeting Debian. Use Go, favor the standard library, and use Bubble Tea for the UI, as specified in `PROJECT-PLAN.md`.
+MVPLAYER (MyVideoPlayer) is a Linux CLI video player with a terminal UI, primarily targeting Debian. Use Go, favor the standard library, and use Bubble Tea for the UI, as specified in `doc/PROJECT-PLAN.md`.
 
-Currently, `PROJECT-PLAN.md` is the only project document; source code, tests, assets, and a Go module have not been added. As implementation begins, place the executable entry point in `cmd/mvplayer/`, private application packages in `internal/`, and Go tests beside the code they exercise. Store small test fixtures in package-local `testdata/` directories.
+Project planning documents live in `doc/`. Place the executable entry point in `cmd/mvplayer/`, private application packages in `internal/`, and Go tests beside the code they exercise. Store small test fixtures in package-local `testdata/` directories.
 
 ## Build, Test, and Development Commands
 

@@ -4,7 +4,7 @@
 
 Follow this document when implementing the design in [PROJECT-PLAN.md](PROJECT-PLAN.md). That document defines product behavior; this document defines delivery order, verification gates, and progress. Its broad first milestone is split into the eight milestones below. All eight together deliver the initial release scope.
 
-Current state: M1–M4 are complete. The application supports CLI startup, local browsing, real audio/video playback, playback controls, and synchronized player status. M5 implementation is complete and verification is pending the user's retest of the fixes; M6–M8 are not started.
+Current state: M1–M8 are complete. M8's documentation and shared checks are complete. Separate Debian Wayland and X11 session verification was not done because this project is being verified under WSLg, which exposes integrated Wayland and X11 application paths rather than separate desktop sessions.
 
 ## Working Through One Milestone
 
@@ -29,8 +29,8 @@ After each implementation session, update the progress table and append a work-l
 | M4 | Playback controls and synchronized status | complete | Go tests/race/vet/build and real-mpv replay/control checks passed. User confirmed first-Enter replay, seek, volume, stop, and stable TUI rendering/navigation; earlier checks confirmed pause/fullscreen and audio controls. User's acceptance of the corrected synchronized TUI closes the final pending desktop check. |
 | M5 | Mixed-media queue | complete | Full Go tests/race/vet/build pass. Real mpv queue integration passes video → audio → video and audio → video → audio, including correct ready/Playing status. User confirmed ASCII queue markers and corrected live TUI transitions. |
 | M6 | Recovery and lifecycle reliability | complete | Go tests/race/vet/build and diff checks passed; real-mpv mixed-queue and external-exit recovery integration passed. User verified window close, restart after player exit, mixed-media transitions without the earlier intermittent black screen, interruption, and cleanup. |
-| M7 | Complete responsive TUI | verification pending | `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -buildvcs=false -o build/mvplayer ./cmd/mvplayer`, and `git diff --check` passed. Model/render tests cover focus, queue playback, filtering, errors, scrolling, Unicode display widths, and wide/narrow sizes. Manual resize and live playback checks remain pending. |
-| M8 | Debian acceptance and usage documentation | not started | — |
+| M7 | Complete responsive TUI | complete | `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build -buildvcs=false -o build/mvplayer ./cmd/mvplayer`, and `git diff --check` passed. Model/render tests cover focus, queue playback, filtering, errors, scrolling, Unicode display widths, and wide/narrow sizes. User confirmed M7 manual resize and live playback verification is done. |
+| M8 | Debian acceptance and usage documentation | complete | README documents Debian prerequisites, build/run, launch forms, controls, media behavior, and limitations. Debian 13.7, Go 1.27.1, mpv 0.40.0, and `TERM=xterm-256color` recorded. Full tests/race/vet/build and CLI help pass. Separate Debian Wayland and X11 session checks were not done: verification is under WSLg, which exposes integrated Wayland and X11 application paths rather than separate desktop sessions. |
 
 ## M1 — Go Foundation and CLI Contract
 
@@ -118,6 +118,8 @@ Before implementation, record precise next/previous and current-entry removal se
 
 ## M8 — Debian Acceptance and Usage Documentation
 
+**Implementation decisions (2026-10-16):** Document Go 1.26+ and Debian's `mpv` package as prerequisites, while recording the versions actually present during this run rather than asserting support for unverified versions. This environment exposes `WAYLAND_DISPLAY=wayland-0` and `DISPLAY=:0` but no `XDG_SESSION_TYPE`; under WSLg these can be provided together for integrated GUI apps and do not establish two separate desktop sessions. Per user direction, close M8 while recording separate Wayland and X11 session verification as not done because WSLg does not provide those two independent desktop sessions. The ignored local `testdata/` samples have no source/license provenance recorded in the work log, so they are not represented as redistributable acceptance fixtures. Earlier synthetic fixtures were generated with ffmpeg under `/tmp`.
+
 **Implement:** Document installation prerequisites, build/run commands, supported launch forms, shortcuts, media behavior, and known limitations. Record the Debian, Go, mpv, and terminal versions actually verified. Address defects found during acceptance without adding deferred features.
 
 **Verify:** On both Debian Wayland and X11 sessions, exercise CLI launch, browsing/filtering, audio/video playback, mixed queues, both control surfaces, fullscreen, resizing, errors, window closure, restart, and clean exit. Use small owned or redistributable fixtures: video with sound, plain audio, audio with artwork, and corrupt media. Record fixture provenance; keep large media outside the repository.
@@ -143,6 +145,30 @@ No arbitrary coverage percentage is required. Tests must cover the milestone's b
 ## Work Log
 
 Initial entry: implementation plan created while the repository was design-only; all milestones were not started at that point.
+
+Date / milestone / phase: 2026-10-16 / M7 / closed
+Changes completed: Marked M7 complete after the user confirmed the remaining manual resize and live playback verification is done.
+Decisions and rationale: Treat the user's explicit confirmation as completion evidence for the manual acceptance checks; preserve the existing automated verification record.
+Verification commands and results: No additional commands run for this status update. M7's existing Go tests, race tests, vet, build, and diff-check results remain recorded in the progress table.
+Manual environment and results: User confirmed manual M7 resize and live playback checks are complete.
+Failures or checks still pending: None for M7. M8 Debian acceptance is still pending its separate Wayland/X11 and interaction checks.
+Milestone status and next action: M7 complete; continue M8 acceptance where the environment permits and explicitly record WSLg limitations.
+
+Date / milestone / phase: 2026-10-16 / M8 / verification pending
+Changes completed: Updated README setup and usage guidance for the implemented workflow, including Debian prerequisites, supported launch forms, keyboard controls, media/window behavior, and known limitations. Updated the progress summary and M8 evidence with the environment actually inspected.
+Decisions and rationale: The environment reports Debian GNU/Linux 13.7 (trixie), Go 1.27.1, mpv 0.40.0, and `TERM=xterm-256color`; no terminal emulator identifier or `XDG_SESSION_TYPE` is set. Both Wayland and X11 display variables are present, so this does not establish distinct sessions. Earlier user-confirmed Wayland playback evidence remains valid. The local ignored sample WebM/WAV files have no provenance/license recorded, and are not claimed as redistributable fixtures; the earlier work log records generated synthetic fixtures under `/tmp`.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go test -race ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false -o build/mvplayer ./cmd/mvplayer`, `make test`, `./build/mvplayer --help`, and `git diff --check` passed. `ffprobe` identified the ignored local sample files as 15.125-second WebM and 9.347-second WAV; this only checks their containers and duration, not fixture provenance or M8 playback acceptance.
+Manual environment and results: No separate X11 session could be identified and physical keyboard/window interaction was not performed during this session. Historical work-log entries record user-confirmed Wayland video/audio playback and queue/control retests, but not the complete M8 interaction matrix in both sessions.
+Failures or checks still pending: M7 resize/live-playback manual checks remain pending. M8 still needs explicit Wayland and X11 acceptance covering launch, browsing/filtering, plain audio, audio with artwork, video with sound, mixed queues, terminal and video-window controls, fullscreen, resizing, corrupt-media errors, window closure, restart, and clean exit. Capture provenance for any acceptance fixtures.
+Milestone status and next action: At the time of this entry, M8 verification was pending. Superseded by the following user-directed closure entry, which records the separate Wayland/X11 session checks as not done in WSLg.
+
+Date / milestone / phase: 2026-10-16 / M8 / closed with platform verification not done
+Changes completed: Closed M8 at the user's direction. Recorded separate Wayland and X11 session checks as not done due to the WSLg environment, while retaining the platform limitation in the progress evidence and README.
+Decisions and rationale: WSLg provides integrated support for Wayland and X11 applications; having both display variables present does not demonstrate two separate Debian desktop sessions. The user directed that M8 be complete while this verification remains explicitly not done.
+Verification commands and results: No new commands run for this status update. M8's documentation, shared tests/race/vet/build checks, CLI help, and diff check results are recorded in the prior M8 entry.
+Manual environment and results: Debian Wayland and X11 session checks were not done in this WSLg environment. Historical Wayland playback acceptance remains recorded separately; it does not count as two distinct session checks.
+Failures or checks still pending: The separate Debian Wayland/X11 session checks remain unperformed and would require independent desktop sessions outside this WSLg setup.
+Milestone status and next action: M8 complete with the separate Wayland/X11 verification exception documented; no further M8 work is planned in this environment.
 
 Date / milestone / phase: 2026-10-16 / M4 / verification pending
 Changes completed: Added mpv commands for pause, relative seek, volume, stop, and fullscreen. The adapter observes path, pause, playback time, duration, volume, and fullscreen and publishes state snapshots. The TUI handles these updates asynchronously, renders playback status, exposes controls while media is active, and gates fullscreen to recognized video files. Added TUI and IPC event tests and documented shortcuts in README.

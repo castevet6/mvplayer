@@ -6,18 +6,31 @@ file browsing and queue management, with mpv handling media playback.
 
 ## Current status
 
-Milestones M1 and M2 provide the CLI contract and responsive local file browser.
-M3 connects CLI file paths and browser selections to one managed mpv process.
-Video opens in its own window; audio plays without one, including files with
-embedded cover art. See
-[IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) for milestone progress and
-[PROJECT-PLAN.md](PROJECT-PLAN.md) for the intended behavior.
+The initial workflow is implemented: browse and filter local files, build an
+in-memory mixed-media queue, and control mpv playback from the terminal or video
+window. Separate Debian Wayland and X11 session checks were not performed under
+WSLg, which provides integrated GUI paths rather than two desktop sessions;
+some physical desktop checks remain pending. See
+[implementation plan](doc/IMPLEMENTATION-PLAN.md) for the acceptance record and
+[project plan](doc/PROJECT-PLAN.md) for intended behavior.
 
 ## Requirements
 
-- Go 1.26 or newer
-- mpv will be required starting with the playback milestone (M3)
-- A terminal for the interactive interface
+- Debian desktop with Wayland or X11
+- Go 1.26 or newer to build
+- mpv 0.40.0 was used for acceptance; other versions may behave differently
+- A keyboard-driven terminal (tested with `TERM=xterm-256color`)
+- Audio output for audible playback; a video-capable desktop session for video
+
+Install the Debian playback dependency with:
+
+```sh
+sudo apt update
+sudo apt install mpv
+```
+
+Install Go 1.26 or newer separately if the Go version provided by your Debian
+release is older. The program does not bundle mpv or media codecs.
 
 ## Build and run
 
@@ -43,8 +56,12 @@ Then run:
 ./build/mvplayer /path/to/media-file
 ```
 
-Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
-requires mpv; browsing remains available when mpv is not installed.
+Supported launch forms are the current directory, a directory, or a media file
+(which starts playback and browses its containing directory). `--help` prints
+usage without starting the TUI. Invalid or inaccessible paths are reported at
+startup. Playback requires mpv; browsing remains available when mpv is not
+installed. Use Enter on a browser media file to start it. Press `q` or Ctrl+C to
+quit.
 
 The TUI shows the browser and queue side by side in terminals at least 100 columns
 wide. Narrower terminals show the focused pane; press Tab to switch panes. Use
@@ -77,15 +94,9 @@ Quitting or interrupting MVPLAYER cancels pending playback work and closes its
 managed mpv process and private socket.
 
 Playback allows software graphics rendering when GPU acceleration is unavailable,
-including remote desktops. This avoids a failing graphics fallback in mpv 0.40
-that can prevent a video from reopening after playback ends or stops.
-
-## Debian playback dependency
-
-Install mpv on Debian with:
-
-```sh
-sudo apt install mpv
-```
-
-The initial release targets Debian desktop systems using either Wayland or X11.
+including remote desktops. Supported media formats depend on the codecs in the
+installed mpv build. The queue and preferences are in-memory only. The player
+browses one directory at a time, omits hidden and unsupported entries, and does
+not provide streaming, subtitles or track selection, repeat, shuffle, or saved
+queues. Global desktop shortcuts are out of scope; video-window shortcuts work
+when that window has keyboard focus.
