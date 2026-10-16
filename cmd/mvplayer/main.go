@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"mvplayer/internal/app"
@@ -19,7 +20,12 @@ selected for playback. Playback requires mpv (sudo apt install mpv).
 
 Options:
   -h, --help  show this help
+  -v, --version  show version information
 `
+
+var version = "dev"
+var commit = "unknown"
+var release = "false"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -29,6 +35,14 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "-v") {
+		value := version
+		if release != "true" {
+			value += " (" + commit + ")"
+		}
+		_, err := fmt.Fprintln(os.Stdout, strings.TrimSpace(value))
+		return err
+	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		_, err := fmt.Fprint(os.Stdout, usage)
 		return err

@@ -3,15 +3,19 @@
 BUILD_DIR ?= build
 BIN ?= $(BUILD_DIR)/mvplayer
 ARGS ?=
+VERSION ?= $(shell cat VERSION)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
+RELEASE ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && test "$$(git describe --tags --exact-match HEAD 2>/dev/null)" = "v$(VERSION)" && printf true || printf false)
+VERSION_FLAGS = -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.release=$(RELEASE)
 
 all: build
 
 build:
 	mkdir -p "$(dir $(BIN))"
-	go build -buildvcs=false -o "$(BIN)" ./cmd/mvplayer
+	go build -buildvcs=false -ldflags '$(VERSION_FLAGS)' -o "$(BIN)" ./cmd/mvplayer
 
 run:
-	go run ./cmd/mvplayer $(ARGS)
+	go run -ldflags '$(VERSION_FLAGS)' ./cmd/mvplayer $(ARGS)
 
 test:
 	go test ./...

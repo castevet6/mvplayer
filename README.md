@@ -14,6 +14,15 @@ some physical desktop checks remain pending. See
 [implementation plan](doc/IMPLEMENTATION-PLAN.md) for the acceptance record and
 [project plan](doc/PROJECT-PLAN.md) for intended behavior.
 
+## Versioning
+
+The current prerelease version is stored in the root `VERSION` file and follows
+Semantic Versioning. Development builds report that version with the source
+commit hash; a clean build from a commit tagged with the matching `v`-prefixed
+version reports only the release version. For example, update `VERSION` to
+`0.1.0-alpha.2`, commit the change, and tag that commit as `v0.1.0-alpha.2`.
+Use `mvplayer --version` to inspect the version embedded in a build.
+
 ## Requirements
 
 - Debian desktop with Wayland or X11
