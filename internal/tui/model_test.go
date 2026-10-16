@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"mvplayer/internal/browser"
 	"mvplayer/internal/playback"
 )
@@ -130,7 +132,7 @@ func TestPlayerFailurePreservesBrowserAndQueue(t *testing.T) {
 	m.cursor = 3
 	updated, _ := m.Update(playerStateMsg(playback.State{Attempt: 0, Path: "/q/one.mp4", Ended: true, EndReason: "error", Failure: errors.New("mpv exited")}))
 	m = updated.(Model)
-	if m.err == nil || m.playing != "" || len(m.queue) != 2 || m.queueIndex != 0 || m.cursor != 3 {
+	if m.playbackErr == nil || m.playing != "" || len(m.queue) != 2 || m.queueIndex != 0 || m.cursor != 3 {
 		t.Fatalf("failure did not preserve usable application state: %#v", m)
 	}
 }
@@ -430,8 +432,8 @@ func TestMixedQueueControlsAndNaturalEOF(t *testing.T) {
 	}
 	updated, _ = m.Update(cmd())
 	m = updated.(Model)
-	if m.err == nil || len(m.queue) != 3 || m.queueIndex != 2 {
-		t.Fatalf("failed next did not preserve queue: error=%v index=%d queue=%v", m.err, m.queueIndex, m.queue)
+	if m.playbackErr == nil || len(m.queue) != 3 || m.queueIndex != 2 {
+		t.Fatalf("failed next did not preserve queue: error=%v index=%d queue=%v", m.playbackErr, m.queueIndex, m.queue)
 	}
 }
 
@@ -528,7 +530,7 @@ func TestQueuedItemReadinessWithoutTimePositionAndNaturalEOF(t *testing.T) {
 	// mpv can signal file-loaded before it has a useful time-pos snapshot.
 	updated, _ = m.Update(playerStateMsg(playback.State{Path: first, Ready: true}))
 	m = updated.(Model)
-	if m.awaitingPlayback || !strings.Contains(m.View().Content, "Now playing: "+first+"  Playing") {
+	if m.awaitingPlayback || !strings.Contains(m.View().Content, "Status: Playing") || !strings.Contains(m.View().Content, "Media: "+first) {
 		t.Fatalf("file-loaded did not end Loading without time-pos: awaiting=%t view=%s", m.awaitingPlayback, m.View().Content)
 	}
 	updated, cmd = m.Update(playerStateMsg(playback.State{Path: first, Ended: true, EndReason: "eof"}))
@@ -597,6 +599,7 @@ func TestQueueMarkersUseASCIIAndDistinguishSelection(t *testing.T) {
 	m := NewWithLister(t.TempDir(), func(string) ([]browser.Entry, error) { return nil, nil })
 	m.queue = []string{"/q/selected.mp3", "/q/playing.mp4"}
 	m.queueCursor, m.queueIndex = 0, 1
+	m.focus = queuePane
 	view := m.View().Content
 	if !strings.Contains(view, "> selected.mp3") || !strings.Contains(view, "* playing.mp4") || strings.Contains(view, "▶") {
 		t.Fatalf("queue markers are not terminal-safe/distinct: %s", view)
@@ -629,7 +632,7 @@ func TestEndOfFileKeepsStatusWhenMPVClearsPath(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(playerStateMsg(playback.State{Ended: true, EndReason: "eof"}))
 	m = updated.(Model)
-	if m.pending != path || !strings.Contains(m.View().Content, "Now playing: "+path+"  Ended") {
+	if m.pending != path || !strings.Contains(m.View().Content, "Status: Ended") || !strings.Contains(m.View().Content, "Media: "+path) {
 		t.Fatalf("EOF status was lost when mpv cleared path: pending=%q view=%s", m.pending, m.View().Content)
 	}
 }
@@ -710,5 +713,95 @@ func TestNavigationFilteringAndFileSelection(t *testing.T) {
 	m = updated.(Model)
 	if m.err != nil || len(m.visible) != 2 {
 		t.Fatalf("parent listing did not recover: error %v, entries %#v", m.err, m.visible)
+	}
+}
+
+func TestPaneFocusQueueEnterAndResize(t *testing.T) {
+	p := &fakePlayer{}
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.player = p
+	m.visible = []browser.Entry{{Name: "a.mp4", Path: "/media/a.mp4", Media: true}, {Name: "b.mp4", Path: "/media/b.mp4", Media: true}}
+	m.queue = []string{"/queue/dup.mp3", "/queue/dup.mp3"}
+	m.queueCursor = 1
+	m.cursor = 0
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	m = updated.(Model)
+	if m.focus != queuePane || m.cursor != 0 || m.queueCursor != 1 {
+		t.Fatalf("focused movement changed wrong selection: focus=%d browser=%d queue=%d", m.focus, m.cursor, m.queueCursor)
+	}
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	m = updated.(Model)
+	if cmd == nil || m.queueIndex != 1 || m.pending != "/queue/dup.mp3" {
+		t.Fatalf("Enter did not play selected duplicate: index=%d pending=%q", m.queueIndex, m.pending)
+	}
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 99, Height: 24})
+	m = updated.(Model)
+	if !strings.Contains(m.View().Content, "Queue") || strings.Contains(m.View().Content, " | ") {
+		t.Fatalf("narrow view did not show focused pane: %s", m.View().Content)
+	}
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updated.(Model)
+	view := m.View().Content
+	if !strings.Contains(view, " | ") || !strings.Contains(view, "dup.mp3") {
+		t.Fatalf("wide view did not render both panes: %s", view)
+	}
+}
+
+func TestFilterPrintableQuitAndIndependentErrors(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.entries = []browser.Entry{{Name: "question?q.mp4", Path: "/media/question?q.mp4", Media: true}}
+	m.applyFilter()
+	m.filtering = true
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+	m = updated.(Model)
+	if m.quitting || m.query != "q" {
+		t.Fatalf("q did not remain filter text: quitting=%t query=%q", m.quitting, m.query)
+	}
+	m.err, m.playbackErr = errors.New("directory denied"), errors.New("mpv disconnected")
+	updated, _ = m.Update(directoryResult{request: m.request, path: m.browseDir, entries: nil})
+	m = updated.(Model)
+	if m.err != nil || m.playbackErr == nil {
+		t.Fatalf("successful listing changed unrelated playback error: browser=%v playback=%v", m.err, m.playbackErr)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: '?', Text: "?"}))
+	m = updated.(Model)
+	m.helpOffset = 100
+	if !m.help || !strings.Contains(m.View().Content, "Playback error: mpv disconnected") {
+		t.Fatalf("help did not expose current error: %s", m.View().Content)
+	}
+}
+
+func TestResponsiveViewFitsFrameAndScrolls(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	for i := 0; i < 40; i++ {
+		m.visible = append(m.visible, browser.Entry{Name: strings.Repeat("界", 24) + string(rune('a'+i%26)), Path: filepath.Join("/media", fmt.Sprint(i)), Media: true})
+		m.queue = append(m.queue, filepath.Join("/queue", strings.Repeat("🎬", 16)+fmt.Sprint(i)+".mp4"))
+	}
+	m.cursor, m.queueCursor = 39, 39
+	for _, size := range []tea.WindowSizeMsg{{Width: 120, Height: 30}, {Width: 100, Height: 24}, {Width: 99, Height: 24}, {Width: 80, Height: 24}, {Width: 40, Height: 12}, {Width: 23, Height: 9}} {
+		updated, _ := m.Update(size)
+		m = updated.(Model)
+		lines := strings.Split(m.View().Content, "\n")
+		if len(lines) > size.Height {
+			t.Fatalf("%dx%d view has %d rows", size.Width, size.Height, len(lines))
+		}
+		for i, line := range lines {
+			if ansi.StringWidth(line) > size.Width {
+				t.Fatalf("%dx%d row %d width %d", size.Width, size.Height, i, ansi.StringWidth(line))
+			}
+		}
+	}
+	if m.width != 23 || m.height != 9 || m.browserOffset == 0 || m.queueOffset == 0 {
+		t.Fatalf("resize/scroll state not retained: %#v", m)
+	}
+	m.focus = queuePane
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = updated.(Model)
+	if m.queueCursor < m.queueOffset || m.queueCursor >= m.queueOffset+max(1, m.height-9) {
+		t.Fatalf("queue selection is outside narrow viewport: cursor=%d offset=%d", m.queueCursor, m.queueOffset)
 	}
 }

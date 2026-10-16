@@ -33,6 +33,13 @@ type FileSelectedMsg struct{ Path string }
 
 type listDirectory func(string) ([]browser.Entry, error)
 
+type pane uint8
+
+const (
+	browserPane pane = iota
+	queuePane
+)
+
 // Model owns browser state. Directory reads run as Bubble Tea commands.
 type Model struct {
 	browseDir        string
@@ -43,6 +50,13 @@ type Model struct {
 	filtering        bool
 	err              error
 	playbackErr      error
+	focus            pane
+	width            int
+	height           int
+	browserOffset    int
+	queueOffset      int
+	help             bool
+	helpOffset       int
 	selected         string
 	pending          string
 	request          uint64
@@ -82,7 +96,7 @@ func NewWithContext(ctx context.Context, browseDir, playFile string, player play
 // NewWithLister allows filesystem errors and delayed results to be exercised
 // without relying on host permissions or a real filesystem race.
 func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error)) Model {
-	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1}
+	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -148,11 +162,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.request != m.request || msg.path != m.browseDir {
 			return m, nil
 		}
-		m.err, m.entries = msg.err, msg.entries
-		if msg.err == nil {
-			m.err = m.playbackErr
+		oldPath := ""
+		if m.cursor >= 0 && m.cursor < len(m.visible) {
+			oldPath = m.visible[m.cursor].Path
 		}
+		m.err, m.entries = msg.err, msg.entries
 		m.applyFilter()
+		m.restoreBrowserSelection(oldPath)
+		return m, nil
+	case tea.WindowSizeMsg:
+		if msg.Width > 0 && msg.Height > 0 {
+			m.width, m.height = msg.Width, msg.Height
+			m.keepVisible()
+		}
 		return m, nil
 	case FileSelectedMsg:
 		if m.cancelAttempt != nil {
@@ -183,11 +205,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
-			m.err = msg.err
+			m.playbackErr = msg.err
 			m.playing = ""
 			m.awaitingPlayback = false
 		} else {
-			m.err = nil
+			m.playbackErr = nil
 			m.playing = msg.path
 			m.status.Ended, m.status.EndReason = false, ""
 		}
@@ -199,7 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wasEnded := m.status.Ended
 		m.status = playback.State(msg)
 		if m.status.Failure != nil {
-			m.err, m.playbackErr = m.status.Failure, m.status.Failure
+			m.playbackErr = m.status.Failure
 			m.awaitingPlayback = false
 			m.playing = ""
 			return m, m.listenPlayer()
@@ -223,7 +245,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.listenPlayer()
 	case controlResult:
 		if msg.err != nil {
-			m.err = msg.err
+			m.playbackErr = msg.err
 		}
 		return m, nil
 	case tea.KeyPressMsg:
@@ -233,9 +255,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if key.String() == "q" || key.String() == "ctrl+c" {
+	if key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, tea.Quit
+	}
+	if m.help {
+		switch key.String() {
+		case "?", "esc":
+			m.help = false
+		case "up", "k":
+			if m.helpOffset > 0 {
+				m.helpOffset--
+			}
+		case "down", "j":
+			m.helpOffset++
+		case "pgup":
+			m.helpOffset = max(0, m.helpOffset-m.helpPageSize())
+		case "pgdown":
+			m.helpOffset += m.helpPageSize()
+		case "q":
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
 	}
 	if m.filtering {
 		switch key.String() {
@@ -248,12 +290,29 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+u":
 			m.query = ""
+		case "tab":
+			m.filtering = false
+			m.focus = queuePane
 		default:
 			if key.Text != "" {
 				m.query += key.Text
 			}
 		}
 		m.applyFilter()
+		m.keepVisible()
+		return m, nil
+	}
+	if key.String() == "q" {
+		m.quitting = true
+		return m, tea.Quit
+	}
+	if key.String() == "tab" {
+		m.focus = 1 - m.focus
+		m.keepVisible()
+		return m, nil
+	}
+	if key.String() == "?" {
+		m.help, m.helpOffset = true, 0
 		return m, nil
 	}
 	if m.playing != "" && m.player != nil && !m.status.Ended {
@@ -298,7 +357,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, m.advanceQueue(m.queueResumeIndex)
 			}
 		case "a":
-			if m.cursor >= 0 && m.cursor < len(m.visible) && m.visible[m.cursor].Media {
+			if m.focus == browserPane && m.cursor >= 0 && m.cursor < len(m.visible) && m.visible[m.cursor].Media {
 				m.queue = append(m.queue, m.visible[m.cursor].Path)
 				if m.queueCursor < 0 {
 					m.queueCursor = 0
@@ -332,16 +391,29 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	switch key.String() {
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.focus == browserPane {
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		} else if m.queueCursor > 0 {
+			m.queueCursor--
 		}
 	case "down", "j":
-		if m.cursor+1 < len(m.visible) {
-			m.cursor++
+		if m.focus == browserPane {
+			if m.cursor+1 < len(m.visible) {
+				m.cursor++
+			}
+		} else if m.queueCursor+1 < len(m.queue) {
+			m.queueCursor++
 		}
 	case "/":
-		m.filtering = true
+		if m.focus == browserPane {
+			m.filtering = true
+		}
 	case "backspace":
+		if m.focus != browserPane {
+			break
+		}
 		parent := filepath.Dir(m.browseDir)
 		if parent != m.browseDir {
 			m.browseDir = parent
@@ -350,6 +422,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadDirectory()
 		}
 	case "enter":
+		if m.focus == queuePane {
+			if m.player != nil && m.queueCursor >= 0 && m.queueCursor < len(m.queue) {
+				return m, m.advanceQueue(m.queueCursor)
+			}
+			break
+		}
 		if m.cursor >= 0 && m.cursor < len(m.visible) {
 			entry := m.visible[m.cursor]
 			if entry.Dir {
@@ -362,6 +440,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return FileSelectedMsg{Path: entry.Path} }
 		}
 	}
+	m.keepVisible()
 	return m, nil
 }
 
@@ -397,7 +476,19 @@ func (m *Model) advanceQueue(index int) tea.Cmd {
 }
 
 func (m *Model) applyFilter() {
+	selected := ""
+	if m.cursor >= 0 && m.cursor < len(m.visible) {
+		selected = m.visible[m.cursor].Path
+	}
 	m.visible = browser.Filter(m.entries, m.query)
+	if selected != "" {
+		for i := range m.visible {
+			if m.visible[i].Path == selected {
+				m.cursor = i
+				break
+			}
+		}
+	}
 	if m.cursor >= len(m.visible) {
 		m.cursor = len(m.visible) - 1
 	}
@@ -406,84 +497,42 @@ func (m *Model) applyFilter() {
 	}
 }
 
-func (m Model) View() tea.View {
-	if m.quitting {
-		view := tea.NewView("Goodbye.\n")
-		view.AltScreen = true
-		return view
+func (m *Model) restoreBrowserSelection(path string) {
+	if path == "" {
+		return
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "MVPLAYER  %s\n\n", m.browseDir)
-	if m.filtering {
-		fmt.Fprintf(&b, "Filter: %s▏  (Enter/Esc to finish, Ctrl+U to clear)\n\n", m.query)
-	} else if m.query != "" {
-		fmt.Fprintf(&b, "Filter: %s  (press / to edit)\n\n", m.query)
-	}
-	if m.err != nil {
-		fmt.Fprintf(&b, "Error: %v\n\n", m.err)
-	}
-	if len(m.visible) == 0 && m.err == nil {
-		b.WriteString("No matching media files or directories.\n")
-	}
-	for i, entry := range m.visible {
-		marker := "  "
-		if i == m.cursor {
-			marker = "> "
-		}
-		name := entry.Name
-		if entry.Dir {
-			name += "/"
-		}
-		fmt.Fprintf(&b, "%s%s\n", marker, name)
-	}
-	if m.selected != "" {
-		fmt.Fprintf(&b, "\nSelected: %s\n", m.selected)
-	}
-	if len(m.queue) > 0 {
-		b.WriteString("\nQueue:\n")
-		for i, path := range m.queue {
-			mark := "  "
-			if i == m.queueCursor {
-				mark = "> "
-			}
-			if i == m.queueIndex {
-				if i == m.queueCursor {
-					mark = ">*"
-				} else {
-					mark = "* "
-				}
-			}
-			fmt.Fprintf(&b, "%s%s\n", mark, filepath.Base(path))
+	for i := range m.visible {
+		if m.visible[i].Path == path {
+			m.cursor = i
+			return
 		}
 	}
-	if m.pending != "" {
-		stateLabel := "Playing"
-		switch {
-		case m.awaitingPlayback:
-			stateLabel = "Loading"
-		case m.status.Ended:
-			stateLabel = playbackEndLabel(m.status.EndReason)
-		case m.status.Paused:
-			stateLabel = "Paused"
-		case m.status.Path == "" && m.status.HasTime == false:
-			stateLabel = "Stopped"
-		}
-		fmt.Fprintf(&b, "\nNow playing: %s  %s", m.pending, stateLabel)
-		if m.status.HasTime {
-			fmt.Fprintf(&b, "  %s", formatTime(m.status.Time))
-		}
-		if m.status.HasDuration {
-			fmt.Fprintf(&b, "/%s", formatTime(m.status.Duration))
-		}
-		fmt.Fprintf(&b, "  Volume: %.0f%%\n", m.status.Volume)
-	}
-	b.WriteString("\n↑/k, ↓/j move • Enter open/play • a enqueue • [/] queue select • d remove • n next • p previous • Backspace parent • / filter • Space pause • ←/→ seek • +/- volume • s stop • f fullscreen • q quit\n")
-	view := tea.NewView(b.String())
-	view.AltScreen = true
-	return view
 }
 
-func formatTime(seconds float64) string { n := int(seconds); return fmt.Sprintf("%d:%02d", n/60, n%60) }
+func (m *Model) keepVisible() {
+	rows := max(1, m.height-8)
+	queueRows := rows
+	if m.width < 100 {
+		queueRows = max(1, rows-1)
+	}
+	m.browserOffset = visibleOffset(m.browserOffset, m.cursor, len(m.visible), rows)
+	m.queueOffset = visibleOffset(m.queueOffset, m.queueCursor, len(m.queue), queueRows)
+}
+
+func visibleOffset(offset, cursor, count, rows int) int {
+	if cursor < 0 || count == 0 {
+		return 0
+	}
+	if cursor < offset {
+		offset = cursor
+	}
+	if cursor >= offset+rows {
+		offset = cursor - rows + 1
+	}
+	return max(0, min(offset, max(0, count-rows)))
+}
+
+func (m Model) helpPageSize() int { return max(1, m.height-3) }
 func playbackEndLabel(reason string) string {
 	switch reason {
 	case "eof":

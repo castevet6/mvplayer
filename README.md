@@ -46,17 +46,29 @@ Then run:
 Use Enter on a media file to start it. Press `q` or Ctrl+C to quit. Playback
 requires mpv; browsing remains available when mpv is not installed.
 
+The TUI shows the browser and queue side by side in terminals at least 100 columns
+wide. Narrower terminals show the focused pane; press Tab to switch panes. Use
+Up/Down or `j`/`k` to move in the focused pane. Press `?` for scrollable shortcut
+help.
+
 Press `a` on a browser media entry to append it to the in-memory queue. Use `[` and
-`]` to select a pending queue entry and `d` to remove it. `n` starts the first
-queued item or advances to the next one; `p` replays the current queued item or
-starts the first pending item. Enter plays immediately without changing pending
-queue entries. The queue accepts duplicates and advances after natural EOF.
+`]` to select a queue entry and `d` to remove a pending entry. Enter on a queue
+entry plays it; `n` starts the next pending item or advances, and `p` selects the
+previous queue item (or resumes the next pending item when immediate playback is
+active). Enter on a browser file plays immediately without changing pending queue
+entries. The queue accepts duplicates and advances after natural EOF.
+
+Press `/` in the browser to filter the current directory. Type any printable
+characters, including shortcut letters, then press Enter or Escape to finish.
+Backspace deletes while filtering and navigates to the parent directory otherwise;
+Ctrl+U clears the filter.
 
 During playback, these shortcuts work in both the terminal and the video window:
 Space toggles pause, Left/Right (or `h`/`l`) seek by five seconds, `+`/`-`
 adjust volume (`=` also raises it), `s` stops playback, and `f` toggles fullscreen
 for video. The status line follows player-reported playback time, duration, volume,
-and pause state. Browser movement remains on Up/Down or `j`/`k`.
+and pause state. Playback controls work from either pane. A very small terminal
+shows resize guidance while keeping keyboard controls active.
 
 Closing the video window stops the current item and leaves the browser open.
 If mpv exits or its IPC connection fails, MVPLAYER reports the failure and
