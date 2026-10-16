@@ -24,7 +24,7 @@ After each implementation session, update the progress table and append a work-l
 | Milestone | Deliverable | Status | Verification evidence |
 | --- | --- | --- | --- |
 | M1 | Go foundation and CLI contract | complete | `go test ./...` and `go vet ./...` passed; `go build -buildvcs=false ./...` passed; built executable help and pseudo-terminal launch/quit passed. |
-| M2 | Responsive local file browser | not started | — |
+| M2 | Responsive local file browser | complete | `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `go vet ./...`, and `go build -buildvcs=false ./...` passed; built executable launched in a pseudo-terminal, rendered entries, and quit with terminal reset. |
 | M3 | Single-file video and audio playback | not started | — |
 | M4 | Playback controls and synchronized status | not started | — |
 | M5 | Mixed-media queue | not started | — |
@@ -43,6 +43,8 @@ After each implementation session, update the progress table and append a work-l
 **Complete when:** The executable starts predictably, input resolution is tested, and temporary limitations are documented rather than reported as successful playback.
 
 ## M2 — Responsive Local File Browser
+
+**Implementation decisions (2026-10-16):** Start and edit filtering with `/`; Enter or Escape exits filter editing, Backspace deletes one Unicode character while filtering, and Ctrl+U clears it. Outside filter editing, Backspace navigates to the parent. Sort entries case-insensitively by name, with directories and recognized media files in the same list. Treat hidden and unsupported files as omitted. The file browser emits a typed `FileSelectedMsg` for M3 to connect to playback; until then it reports the selected path. A request counter and directory path guard discard stale asynchronous listings. A lister function seam makes directory errors deterministic in tests.
 
 **Implement:** Add asynchronous directory listing, name sorting, hidden-file omission, recognized video/audio extensions, parent navigation, arrow and `j`/`k` movement, and current-directory filtering. Enter opens a directory or emits a file-selection action for M3. Handle empty directories and access errors in the UI. Ignore stale listing results after navigation changes.
 
@@ -127,6 +129,14 @@ Verification commands and results: `gofmt` completed; `GOCACHE=/tmp/mvplayer-goc
 Manual environment and results: Built `/tmp/mvplayer`; `/tmp/mvplayer --help` printed usage and exited. Ran `/tmp/mvplayer /etc/hostname` in an 80x24 pseudo-terminal, confirmed the containing directory and pending playback file appeared, sent `q`, and observed a clean exit with terminal reset sequences. No real playback or graphical behavior is part of M1.
 Failures or checks still pending: None for M1. Default VCS stamping remains unavailable in this workspace because `.git` is not a valid Git repository; `-buildvcs=false` is the verified build command here.
 Milestone status and next action: complete; M1 acceptance criteria are met. Proceed to M2 when authorized.
+
+Date / milestone / phase: 2026-10-16 / M2 / closed
+Changes completed: Added asynchronous local directory listing with hidden/unsupported-file omission, case-insensitive name sorting, video/audio extension recognition, parent navigation, movement by arrows or j/k, `/` filtering, empty/error states, stale-result rejection, and typed file-selection messages. Preserved M1's pending CLI file display. Added browser and TUI tests for listing/filtering, media classification, missing directories, selection, error recovery, navigation, and stale responses.
+Decisions and rationale: Filtering uses `/`, Backspace navigates to the parent outside filter editing, Enter/Escape ends filter editing, and Ctrl+U clears the query. The M3 playback connection is represented by `FileSelectedMsg` so file selection has a stable event boundary.
+Verification commands and results: `GOCACHE=/tmp/mvplayer-gocache go test ./...`, `GOCACHE=/tmp/mvplayer-gocache go vet ./...`, and `GOCACHE=/tmp/mvplayer-gocache go build -buildvcs=false ./...` passed. The default Go cache was not writable, so verification used `/tmp`; default VCS stamping remains unavailable in the placeholder Git workspace.
+Manual environment and results: Built `/tmp/mvplayer`, launched it against the repository in a pseudo-terminal, confirmed directories rendered, pressed `q`, and observed the terminal reset.
+Failures or checks still pending: No permission-denied OS test was used because privileged execution can bypass it; the injected lister error test covers the UI failure path. No separate desktop or mpv checks apply to M2.
+Milestone status and next action: complete; proceed to M3 when authorized.
 
 Append one entry per implementation session using this template:
 
