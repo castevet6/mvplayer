@@ -200,7 +200,7 @@ if [[ -z "$resume_dir" ]]; then
 		git -C "$repo_root" update-ref -d "$base_git_ref" >/dev/null 2>&1 || true
 	}
 	trap cleanup EXIT
-	git fetch --quiet origin "pull/$pr:$pr_ref" "refs/heads/$base_ref:$base_git_ref" || fail "could not fetch captured PR commits"
+	git fetch --quiet origin "pull/$pr/head:$pr_ref" "refs/heads/$base_ref:$base_git_ref" || fail "could not fetch captured PR commits"
 	[[ "$(git rev-parse "$pr_ref")" == "$head_sha" ]] || fail "PR head moved during capture; start a fresh run"
 	[[ "$(git rev-parse "$base_git_ref")" == "$base_sha" ]] || fail "PR base moved during capture; start a fresh run"
 
