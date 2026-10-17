@@ -6,6 +6,10 @@ For MVP feature planning, approval, implementation, verification, PR creation,
 or post-merge archiving, read `doc/FEATURE-WORKFLOW.md` and use the repository
 skill at `.agents/skills/mvplayer-feature/SKILL.md`.
 
+For GitHub PR creation or review-comment follow-up, use
+`.agents/skills/github-pr/SKILL.md`. It creates or updates PRs and handles
+submitted findings; independent code review remains a separate request.
+
 Feature plans are tracked in `doc/features/MVP-<number>.md`. Implementation
 requires explicit user approval recorded at the beginning of the plan. Missing,
 ambiguous, or negative approval blocks implementation: explain the gate and wait

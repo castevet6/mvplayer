@@ -1,11 +1,11 @@
 # MVP-1: Clear pane focus and selection
 
-- Status: implemented
+- Status: verified
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-17
 - Branch: feature/mvp-1-clear-pane-focus-and-selection
-- PR: —
-- Verification: pending
+- PR: pending
+- Verification: passed
 
 ## Feature status
 
@@ -14,7 +14,8 @@
   bright white on blue; active rows use bold underline with the terminal's
   default foreground. README and help describe the revised cues.
 - **Validation:** Full tests and vet pass after the palette revision. Visual
-  review of the revised palette on dark and light backgrounds remains pending.
+  review of the revised palette has passed on dark and light backgrounds,
+  including wide and narrow layouts and `NO_COLOR` output.
 - **Blockers:** None identified during planning.
 
 Mark the feature complete only after the acceptance criteria below have been met.
@@ -173,8 +174,10 @@ Automated verification on 2026-10-17, rerun after the palette revision:
 - `gofmt -w internal/tui/model.go internal/tui/view.go internal/tui/model_test.go`
   — completed.
 
-Manual verification remains pending for the revised palette: capture and review
-representative wide (100+ columns) and narrow (24–99 columns) views with dark and
-light terminal backgrounds, including `NO_COLOR` monochrome output. Check that
-text remains legible, markers stay distinct, and the frame fits. User visual
-review is needed before setting status to `verified`.
+Manual verification on 2026-10-17, performed by the user after the palette
+revision:
+
+- Reviewed wide and narrow layouts on dark and light terminal backgrounds.
+- Tested `NO_COLOR`; brackets and bold/underline text cues remained visible
+  without terminal colors.
+- Confirmed the revised palette is legible and accepted.
