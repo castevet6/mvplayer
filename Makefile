@@ -1,4 +1,4 @@
-.PHONY: all build run test install uninstall clean
+.PHONY: all build run test test-pr-workflow install uninstall clean
 
 BUILD_DIR ?= build
 BIN ?= $(BUILD_DIR)/mvplayer
@@ -19,6 +19,10 @@ run:
 
 test:
 	go test ./...
+
+test-pr-workflow:
+	bash -n scripts/pr.sh scripts/review-pr.sh scripts/test-pr-workflow.sh
+	./scripts/test-pr-workflow.sh
 
 install:
 	./scripts/install.sh
