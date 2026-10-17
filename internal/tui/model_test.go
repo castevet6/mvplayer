@@ -770,6 +770,15 @@ func TestBrowserFooterKeepsHelpAndQuitVisible(t *testing.T) {
 			if !strings.Contains(footer, "? help") || !strings.Contains(footer, "q quit") {
 				t.Fatalf("footer hid help or quit at width %d: %q", width, footer)
 			}
+			if strings.Contains(footer, "d remove") {
+				t.Fatalf("browser footer advertised Queue-only deletion at width %d: %q", width, footer)
+			}
+			m.filtering = true
+			view = m.View().Content
+			footer = view[strings.LastIndex(view, "\n")+1:]
+			if strings.Contains(footer, "? help") || !strings.Contains(footer, "Ctrl+C quit") {
+				t.Fatalf("filter footer gave inaccurate help/quit hints at width %d: %q", width, footer)
+			}
 		})
 	}
 }

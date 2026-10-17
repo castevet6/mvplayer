@@ -251,10 +251,10 @@ func (m Model) hints() string {
 		return "Tab switch • ? help"
 	}
 	if m.filtering {
-		return "? help • Ctrl+C quit • Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch"
+		return "Ctrl+C quit • Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch"
 	}
 	if m.focus == browserPane {
-		return "? help • q quit • Tab switch • ↑/k ↓/j move • Enter open/play • a enqueue • [/] select • d remove • / filter"
+		return "? help • q quit • Tab switch • ↑/k ↓/j move • Enter open/play • a enqueue • [/] select • / filter"
 	}
 	return "Tab switch • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
 }
