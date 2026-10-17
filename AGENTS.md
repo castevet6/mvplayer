@@ -1,5 +1,22 @@
 # Repository Guidelines
 
+## Feature Workflow
+
+For MVP feature planning, approval, implementation, verification, PR creation,
+or post-merge archiving, read `doc/FEATURE-WORKFLOW.md` and use the repository
+skill at `.agents/skills/mvplayer-feature/SKILL.md`.
+
+Feature plans are tracked in `doc/features/MVP-<number>.md`. Implementation
+requires explicit user approval recorded at the beginning of the plan. Missing,
+ambiguous, or negative approval blocks implementation: explain the gate and wait
+for explicit approval or an explicit exception. A request to implement alone
+does not override this gate. Record exceptions in the plan.
+
+Implement approved features on `feature/mvp-<number>-<hyphenated-description>`
+branches based on `develop`; target feature PRs at `develop`. Approval to mark a
+plan ready does not itself request implementation. Follow the workflow for
+scope changes, verification, and archiving after merge.
+
 ## Project Scope & Structure
 
 MVPLAYER (MyVideoPlayer) is a Linux CLI video player with a terminal UI, primarily targeting Debian. Use Go, favor the standard library, and use Bubble Tea for the UI, as specified in `doc/PROJECT-PLAN.md`.
