@@ -88,13 +88,19 @@ plan and commit/push that metadata update. Leave status `verified` until merge.
 When finalization is requested, confirm the feature PR was merged into `develop`
 using remote evidence. A closed, unmerged PR is not complete.
 
-Create a documentation branch from updated `develop`, such as
-`docs/mvp-1-archive-plan`. Record the feature PR URL, merge commit, and merge date;
-set `complete`; move the document with `git mv` to
-`doc/features/done/MVP-<number>.md`. Repair links affected by the move. Commit,
-push, and open a small follow-up PR into `develop`. Finalization authorizes these
-documentation publication actions, but not merging that PR. Report the archive
-PR as pending until it merges; the archive reaches `develop` through that PR.
+Update local `develop` from the remote, preserving unrelated work and stopping
+if local history has diverged. Record the feature PR URL, merge commit, and merge
+date; set `complete`; move the document with `git mv` to
+`doc/features/done/MVP-<number>.md`. Repair links affected by the move.
+
+Check the documentation diff and affected links, then commit the finalization
+as one small documentation commit directly on `develop` and push normally.
+Finalization authorizes this documentation commit and direct push; it requires
+no additional branch, PR, or PR review round. Preserve the published merge
+commit and shared history. If branch protection rejects the direct push, report
+the restriction and leave the commit local rather than creating a follow-up PR
+without a user request. Report the finalization commit and whether it reached
+remote `develop`.
 
 ## Example requests
 

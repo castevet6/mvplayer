@@ -24,8 +24,9 @@ editing it and inspect relevant code when planning or implementing.
 - **Verify and publish:** Record actual evidence, then set `verified` only when
   all required checks passed. Use the workflow's authorization rules to commit,
   push, and open or update the feature PR into `develop`.
-- **Finalize:** Confirm remote merge evidence, then prepare the archive move and
-  follow-up documentation PR. Report whether that archive PR is still pending.
+- **Finalize:** Confirm remote merge evidence, archive the plan, and publish one
+  documentation commit directly on `develop` under the workflow's authorization
+  rules. Report the commit and whether the push succeeded.
 
 Report the document path, current status, work performed, verification results,
 and any pending user action or PR. Keep approval and verification evidence
