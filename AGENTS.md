@@ -48,51 +48,14 @@ Use Go’s `testing` package with `*_test.go` files and `TestXxx` functions. Pre
 
 ## Commit & Pull Request Guidelines
 
-Git history is unavailable, so no existing commit convention can be confirmed. Use concise, imperative subjects such as `Add playback state model`. Keep commits focused. In pull requests, explain behavior changes, link relevant issues, and report validation performed. Include terminal captures for visible TUI changes and note Debian-specific dependencies or setup requirements.
+Use concise, imperative commit subjects and keep commits focused. In pull
+requests, explain behavior changes, link relevant issues, and report validation
+performed. Include terminal captures for visible TUI changes and note
+Debian-specific dependencies or setup requirements.
 
 ## Pull requests and review
 
-Codex orchestrates review and fixes. Claude reviews the PR head through
-`scripts/review-pr.sh`, following `REVIEW.md`. Opening or updating a PR authorizes
-running the review script, posting review responses, and committing and pushing
-fixes within the authorized scope. Existing feature approval gates still apply.
-
-Before starting work that needs GitHub CLI access, confirm that network-capable
-execution is available. If it is not already available, request escalated
-execution for the required `gh` commands before proceeding. Treat an API
-connection failure inside the sandbox as a possible network restriction; check
-GitHub CLI authentication in network-capable execution before concluding that
-credentials are invalid.
-
-After opening or updating a pull request:
-
-1. Run `./scripts/review-pr.sh <pr-number>` from the repository root and wait for
-   it to finish; it can take a few minutes. The script uses `bot-token.sh` for
-   the reviewer identity. Keep tokens and private keys out of logs and comments.
-2. Read the bot's inline findings, review summaries, and PR conversation. Replace
-   `{owner}/{repo}` and `<pr-number>` with the actual values:
-
-   ```bash
-   gh api --paginate repos/{owner}/{repo}/pulls/<pr-number>/comments --jq '.[] | select(.body | contains("claude-review")) | {id, path, line, body}'
-   gh api --paginate repos/{owner}/{repo}/pulls/<pr-number>/reviews --jq '.[] | select(.body | contains("claude-review")) | {id, commit_id, body}'
-   gh pr view <pr-number> --comments
-   ```
-
-   Read open review threads from other reviewers too, including earlier rounds.
-   The script may post a fallback conversation comment instead of inline findings.
-3. Fix every valid **blocking** finding. Fix **suggestion** findings when clearly
-   right; address **nit** findings only when trivial. Address actionable open
-   review comments within scope. If a blocking finding is disputed, reply in its
-   thread with the reason and evidence. Report findings that require scope
-   approval or cannot be fixed, and leave them open.
-4. Run affected checks and repository-required checks, commit and push fixes,
-   and reply to addressed threads with the fix and validation. Run the review
-   again after fixes, up to **two review rounds total per PR**, counting earlier
-   sessions and fallback reviews. Read and address findings from the second round
-   too; push those fixes without starting a third round.
-5. Report the PR URL, rounds used, validation, and any remaining findings or
-   changes made after the last review. If the script fails, report the failure;
-   a failed review is not a clean review.
-
-Never merge a pull request; a human performs merges. Never approve your own PR
-or dismiss the bot's review.
+For PR creation, review, or follow-up, follow `.agents/skills/github-pr/SKILL.md`.
+It defines GitHub access setup, publication authorization, review rounds, findings,
+and the handoff to the human merger. Feature approval gates in
+`doc/FEATURE-WORKFLOW.md` remain authoritative.
