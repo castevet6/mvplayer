@@ -1,14 +1,15 @@
 ---
 name: github-pr
-description: Create or update GitHub pull requests with the GitHub CLI and handle their review comments. Use for PR publication or comment follow-up; this skill does not conduct independent code reviews.
+description: Create or update GitHub pull requests with the GitHub CLI, and address findings the user reports. Use for PR publication or user-requested comment follow-up; this skill does not conduct independent code reviews.
 ---
 
 # GitHub pull requests
 
 Use `gh` to create or update a pull request, then report its URL and current
-state. Read repository instructions first. For an MVPLAYER MVP feature, also
-follow [the feature workflow](../../../doc/FEATURE-WORKFLOW.md) and use the
-`mvplayer-feature` skill for its plan status and publication requirements.
+state and leave it open. Read repository instructions first. For an MVPLAYER
+MVP feature, also follow [the feature workflow](../../../doc/FEATURE-WORKFLOW.md)
+and use the `mvplayer-feature` skill for its plan status and publication
+requirements.
 
 ## Create or update
 
@@ -24,20 +25,22 @@ follow [the feature workflow](../../../doc/FEATURE-WORKFLOW.md) and use the
    target branches, and evidence. Use `--body-file` when the body has multiple
    paragraphs or lists.
 4. Push only when publication is authorized by the user and repository
-   workflow. Do not merge during PR creation unless the user's instruction
-   explicitly authorizes a merge condition that has been met.
+   workflow. PR creation does not authorize merging; leave the PR open and wait
+   for the user to explicitly say it can be merged or to request a merge.
 
 ## Review comments
 
-When a requested PR task includes an existing PR, retrieve its reviews and
-comments with `gh pr view` and `gh api` (including paginated inline review
-comments and issue comments). Address every actionable finding in code, tests,
-or documentation. Run the affected checks and required repository-wide checks.
-Keep the PR open while findings remain. Do not broaden this into an independent
-code review, and do not reply to reviewers unless the user asks for a response.
+The user will report whether comments or findings need attention. Do not
+proactively poll, retrieve, or review PR comments. When the user reports findings
+and asks for them to be addressed, retrieve the relevant comments with the
+GitHub CLI as needed, fix each actionable finding in code, tests, or
+documentation, and run the affected checks plus required repository-wide
+checks. Do not broaden this into an independent code review, and do not reply to
+reviewers unless the user asks for a response. Report what was fixed and leave
+the PR open.
 
-Treat an explicit user instruction that the PR may be merged once all comments
-are fixed as conditional merge authorization. Merge only after every actionable
-finding is fixed, required checks pass, and no review thread remains unresolved.
-Otherwise report the remaining findings or checks and leave the PR open. Report
-the PR state and any pending action clearly.
+Do not merge automatically after findings are fixed or checks pass. Wait for the
+user to explicitly say the PR can be merged or to request a merge. After that
+signal, confirm the PR is mergeable and the required checks pass, then merge it.
+If findings remain, checks fail, or the PR is not mergeable, explain what is
+blocking the merge and leave the PR open. Report the final PR state clearly.
