@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"mvplayer/internal/playback"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 type directoryResult struct {
@@ -74,6 +76,8 @@ type Model struct {
 	appContext       context.Context
 	attemptContext   context.Context
 	cancelAttempt    context.CancelFunc
+	colorProfile     colorprofile.Profile
+	noColor          bool
 }
 
 func New(browseDir, playFile string, player playback.Player) Model {
@@ -96,7 +100,9 @@ func NewWithContext(ctx context.Context, browseDir, playFile string, player play
 // NewWithLister allows filesystem errors and delayed results to be exercised
 // without relying on host permissions or a real filesystem race.
 func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error)) Model {
-	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24}
+	noColorValue, noColorSet := os.LookupEnv("NO_COLOR")
+	noColor := noColorSet && noColorValue != ""
+	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -175,6 +181,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.width, m.height = msg.Width, msg.Height
 			m.keepVisible()
 		}
+		return m, nil
+	case tea.ColorProfileMsg:
+		m.colorProfile = msg.Profile
 		return m, nil
 	case FileSelectedMsg:
 		if m.cancelAttempt != nil {
@@ -364,7 +373,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "d":
-			if m.queueCursor >= 0 && m.queueCursor < len(m.queue) {
+			if m.focus == queuePane && m.queueCursor >= 0 && m.queueCursor < len(m.queue) {
 				if (m.queueIndex >= 0 && m.queueCursor <= m.queueIndex) || (m.queueIndex < 0 && m.queueCursor < m.queueResumeIndex) {
 					break
 				}
@@ -511,12 +520,8 @@ func (m *Model) restoreBrowserSelection(path string) {
 
 func (m *Model) keepVisible() {
 	rows := max(1, m.height-8)
-	queueRows := rows
-	if m.width < 100 {
-		queueRows = max(1, rows-1)
-	}
 	m.browserOffset = visibleOffset(m.browserOffset, m.cursor, len(m.visible), rows)
-	m.queueOffset = visibleOffset(m.queueOffset, m.queueCursor, len(m.queue), queueRows)
+	m.queueOffset = visibleOffset(m.queueOffset, m.queueCursor, len(m.queue), rows)
 }
 
 func visibleOffset(offset, cursor, count, rows int) int {

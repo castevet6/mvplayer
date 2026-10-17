@@ -80,16 +80,22 @@ installed. Use Enter on a browser media file to start it. Press `q` or Ctrl+C to
 quit.
 
 The TUI shows the browser and queue side by side in terminals at least 100 columns
-wide. Narrower terminals show the focused pane; press Tab to switch panes. Use
-Up/Down or `j`/`k` to move in the focused pane. Press `?` for scrollable shortcut
-help.
+wide. Narrower terminals show the focused pane, with both pane names in the header;
+press Tab to switch panes. The focused pane name is bracketed, with white text on
+a blue background when color is available. Its selected row uses bold underlined
+text in the terminal's default foreground color. A plain `>` marks the remembered
+selection in the other pane. The queue's `*` marks the playing item, so `>*`
+means the playing item is also selected. Use Up/Down or
+`j`/`k` to move in the focused pane. Press `?` for scrollable shortcut help.
+Setting `NO_COLOR` disables colors while retaining the brackets and bold cues.
 
 Press `a` on a browser media entry to append it to the in-memory queue. Use `[` and
-`]` to select a queue entry and `d` to remove a pending entry. Enter on a queue
-entry plays it; `n` starts the next pending item or advances, and `p` selects the
-previous queue item (or resumes the next pending item when immediate playback is
-active). Enter on a browser file plays immediately without changing pending queue
-entries. The queue accepts duplicates and advances after natural EOF.
+`]` to select a queue entry and `d` to remove an eligible pending entry while
+Queue is focused. Enter on a queue entry plays it; `n` starts the next pending
+item or advances, and `p` selects the previous queue item (or resumes the next
+pending item when immediate playback is active). Enter on a browser file plays
+immediately without changing pending queue entries. The queue accepts duplicates
+and advances after natural EOF.
 
 Press `/` in the browser to filter the current directory. Type any printable
 characters, including shortcut letters, then press Enter or Escape to finish.
