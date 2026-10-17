@@ -1,10 +1,12 @@
 # MVP-1: Clear pane focus and selection
 
-- Status: verified
+- Status: complete
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-17
 - Branch: feature/mvp-1-clear-pane-focus-and-selection
 - PR: https://github.com/castevet6/mvplayer/pull/1
+- Merge commit: 65e6c435f93a2f3df3c50d88a46ae25e13b0a319
+- Merged into: develop / 2026-10-17T20:47:42Z
 - Verification: passed
 
 ## Feature status
@@ -16,9 +18,11 @@
 - **Validation:** Full tests and vet pass after the palette revision. Visual
   review of the revised palette has passed on dark and light backgrounds,
   including wide and narrow layouts and `NO_COLOR` output.
-- **Blockers:** None identified during planning.
+- **Completion:** PR #1 merged into `develop` on 2026-10-17. Remote merge
+  evidence was confirmed through GitHub CLI before archiving this plan.
+- **Blockers:** None remaining.
 
-Mark the feature complete only after the acceptance criteria below have been met.
+The acceptance criteria below have been met and the feature PR has merged.
 
 ## Approval and decisions
 
@@ -181,3 +185,16 @@ revision:
 - Tested `NO_COLOR`; brackets and bold/underline text cues remained visible
   without terminal colors.
 - Confirmed the revised palette is legible and accepted.
+
+PR review and final automated verification on 2026-10-17:
+
+- Two Claude review rounds completed. All six findings were fixed, answered,
+  and resolved.
+- Review fixes made the review script executable, corrected direct dependency
+  metadata and the unset `NO_COLOR` test case, and aligned footer hints with
+  focus and filter behavior while keeping help and quit visible.
+- The second-round footer fixes were pushed in `cc4086b` after the last review;
+  no third round was started, following the repository review limit.
+- `env GOCACHE=/tmp/mvplayer-gocache go test ./...` — passed after the final fixes.
+- `env GOCACHE=/tmp/mvplayer-gocache go vet ./...` — passed after the final fixes.
+- `git diff --check` — passed after the final fixes.
