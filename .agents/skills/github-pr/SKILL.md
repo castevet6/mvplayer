@@ -44,13 +44,16 @@ context. `scripts/pr.sh status <number>` provides the concise state;
 full thread context, and whether the head changed after review. Use
 `scripts/pr.sh reply <number> <comment-id> --body-file <file>` for inline
 replies and `scripts/pr.sh resolve <number> <thread-node-id>` only after the
-thread is addressed. A status failure is not a clean review.
+thread is addressed. Check state is `passed`, `failed`, `pending`, or `unknown`;
+pending work is not a failure or a completed validation. A status failure is
+not a clean review.
 
 Run `scripts/review-pr.sh <pr-number>` and wait for completion. It reviews a
 pinned base/head pair in a detached worktree. Round one assesses the PR. Round
 two receives the prior findings, replies, dispositions, and changes since the
-last reviewed head. At most two Claude reviews may be published per PR across
-sessions. The runner serializes concurrent requests per PR and stores
+last reviewed head, including an incremental diff when that commit is
+available. At most two Claude reviews may be published per PR across sessions.
+The runner serializes concurrent requests per PR and stores
 permission-restricted run artifacts under ignored `build/pr-review/`. Failed
 attempts before publication do not consume a round; retries use
 `scripts/review-pr.sh --resume <run-directory>` to publish the saved result

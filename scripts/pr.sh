@@ -49,8 +49,8 @@ load_status() {
 		more_comments="$(jq -s '[.[].data.node.comments.nodes[]?]' <<<"$comment_pages")"
 		threads="$(jq --arg id "$thread_id" --argjson more "$more_comments" 'map(if .id == $id then .comments.nodes += $more | .comments.pageInfo.hasNextPage = false else . end)' <<<"$threads")"
 	done < <(jq -r '.[] | select(.comments.pageInfo.hasNextPage) | .id' <<<"$threads")
-	checks="$(gh api "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/check-runs" | jq '[.check_runs[]? | {name,status,conclusion}]')"
-	statuses="$(gh api "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/status" | jq '[.statuses[]? | {context,state,description}]')"
+	checks="$(gh api --paginate "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/check-runs?per_page=100" | jq -s '[.[].check_runs[]? | {name,status,conclusion}]')"
+	statuses="$(gh api --paginate "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/status?per_page=100" | jq -s '[.[].statuses[]? | {context,state,description}]')"
 
 	jq -n \
 		--arg repo "$repo" --argjson pr "$pr" --arg bot "$bot" \
@@ -78,9 +78,18 @@ load_status() {
 		 unresolved_threads:([$threads[] | select(.isResolved == false) | {id,path,line,comments:[.comments.nodes[] | {id:.databaseId,author:.author.login,body,created_at:.createdAt}],comments_truncated:.comments.pageInfo.hasNextPage}]),
 		review_threads_truncated:false,
 		 checks:{check_runs:$checks,status_contexts:$statuses,
-		  passed:(if (($checks|length) + ($statuses|length)) == 0 then null else
-		   ([$checks[] | select((.conclusion // "") | ascii_downcase | . != "success" and . != "skipped" and . != "neutral")]|length == 0) and
-		   ([$statuses[] | select(.state != "success")]|length == 0) end)}}
+		  state:(if (($checks|length) + ($statuses|length)) == 0 then "unknown"
+		   elif ([$checks[] | select(.status == "completed" and ((.conclusion // "") | ascii_downcase | . != "success" and . != "skipped" and . != "neutral"))]|length > 0) or
+		        ([$statuses[] | select(.state == "failure" or .state == "error")]|length > 0) then "failed"
+		   elif ([$checks[] | select(.status != "completed")]|length > 0) or
+		        ([$statuses[] | select(.state == "pending")]|length > 0) then "pending"
+		   else "passed" end),
+		  passed:(if (($checks|length) + ($statuses|length)) == 0 then null
+		   elif ([$checks[] | select(.status == "completed" and ((.conclusion // "") | ascii_downcase | . != "success" and . != "skipped" and . != "neutral"))]|length > 0) or
+		        ([$statuses[] | select(.state == "failure" or .state == "error")]|length > 0) then false
+		   elif ([$checks[] | select(.status != "completed")]|length > 0) or
+		        ([$statuses[] | select(.state == "pending")]|length > 0) then null
+		   else true end)}}
 	'
 }
 
@@ -100,7 +109,7 @@ status)
 			"PR #\(.number) \(.state | ascii_upcase): \(.url)",
 			"head \(.head_ref) \(.head_sha); base \(.base_ref) \(.base_sha)",
 			"Claude rounds: \(.completed_review_rounds); latest reviewed SHA: \(.latest_reviewed_sha // "unknown"); changed since review: \(if .changes_after_last_review == null then "unknown" else (.changes_after_last_review|tostring) end)",
-			"checks passed: \(if .checks.passed == null then "unknown" else (.checks.passed|tostring) end)",
+			"checks: \(.checks.state)",
 			(if (.unresolved_threads|length)==0 then "unresolved threads: none" else
 			 "unresolved threads:\n" + ([.unresolved_threads[] | "- \(.path):\(.line // "general") [\(.id)] " + ([.comments[] | "\(.author): \(.body | split("\n") | first)"] | join("; "))] | join("\n")) end)
 		' <<<"$result"

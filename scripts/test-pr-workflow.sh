@@ -28,14 +28,25 @@ for arg in "$@"; do
 			fi
 			exit 0 ;;
 		repos/castevet6/mvplayer/issues/42/comments) printf '%s\n' '[]'; exit 0 ;;
-		repos/castevet6/mvplayer/commits/*/check-runs)
+		repos/castevet6/mvplayer/commits/*/check-runs?per_page=100)
+			if [[ "$*" != *'--paginate'* ]]; then
+				echo 'check runs request is not paginated' >&2
+				exit 2
+			fi
 			case "${MOCK_CHECKS:-none}" in
 				success) printf '%s\n' '{"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]}' ;;
 				failure) printf '%s\n' '{"check_runs":[{"name":"ci","status":"completed","conclusion":"failure"}]}' ;;
+				pending) printf '%s\n' '{"check_runs":[{"name":"ci","status":"in_progress","conclusion":null}]}' ;;
 				*) printf '%s\n' '{"check_runs":[]}' ;;
 			esac
 			exit 0 ;;
-		repos/castevet6/mvplayer/commits/*/status) printf '%s\n' '{"statuses":[]}'; exit 0 ;;
+		repos/castevet6/mvplayer/commits/*/status?per_page=100)
+			if [[ "${MOCK_STATUSES:-none}" == pending ]]; then
+				printf '%s\n' '{"statuses":[{"context":"ci-legacy","state":"pending","description":"running"}]}'
+			else
+				printf '%s\n' '{"statuses":[]}'
+			fi
+			exit 0 ;;
 		repos/castevet6/mvplayer/pulls/comments/700) printf '%s\n' 'https://api.github.com/repos/castevet6/mvplayer/pulls/42'; exit 0 ;;
 		repos/castevet6/mvplayer/pulls/42/comments/700/replies) printf '%s\n' '{"id":701,"in_reply_to_id":700,"html_url":"https://github.com/castevet6/mvplayer/pull/42#discussion_r701"}'; exit 0 ;;
 	esac
@@ -55,15 +66,19 @@ chmod +x "$tmp/bin/gh"
 
 export PATH="$tmp/bin:$PATH"
 status="$($repo_root/scripts/pr.sh status 42 --json)"
-jq -e '.number == 42 and .state == "open" and .completed_review_rounds == 0 and .checks.passed == null and (.unresolved_threads|length) == 0' <<<"$status" >/dev/null
+jq -e '.number == 42 and .state == "open" and .completed_review_rounds == 0 and .checks.state == "unknown" and .checks.passed == null and (.unresolved_threads|length) == 0' <<<"$status" >/dev/null
 status="$(MOCK_CHECKS=success MOCK_REVIEWED=1 "$repo_root/scripts/pr.sh" status 42 --json)"
 jq -e '.checks.passed == true and .changes_after_last_review == false and .completed_review_rounds == 1' <<<"$status" >/dev/null
 summary="$(MOCK_CHECKS=success MOCK_REVIEWED=1 "$repo_root/scripts/pr.sh" status 42)"
-[[ "$summary" == *'changed since review: false'* && "$summary" == *'checks passed: true'* ]]
+[[ "$summary" == *'changed since review: false'* && "$summary" == *'checks: passed'* ]]
 status="$(MOCK_CHECKS=failure "$repo_root/scripts/pr.sh" status 42 --json)"
 jq -e '.checks.passed == false' <<<"$status" >/dev/null
 summary="$(MOCK_CHECKS=failure "$repo_root/scripts/pr.sh" status 42)"
-[[ "$summary" == *'checks passed: false'* ]]
+[[ "$summary" == *'checks: failed'* ]]
+status="$(MOCK_CHECKS=pending "$repo_root/scripts/pr.sh" status 42 --json)"
+jq -e '.checks.state == "pending" and .checks.passed == null' <<<"$status" >/dev/null
+summary="$(MOCK_STATUSES=pending "$repo_root/scripts/pr.sh" status 42)"
+[[ "$summary" == *'checks: pending'* ]]
 
 printf '%s\n' 'Reviewed the requested behavior and validation passed.' >"$tmp/reply.md"
 reply="$($repo_root/scripts/pr.sh reply 42 700 --body-file "$tmp/reply.md")"
