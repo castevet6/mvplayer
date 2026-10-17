@@ -704,6 +704,9 @@ func TestColorAndNoColorPresentation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.name == "unset" {
 				t.Setenv("NO_COLOR", "")
+				if err := os.Unsetenv("NO_COLOR"); err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				t.Setenv("NO_COLOR", tc.noColor)
 			}
@@ -754,6 +757,20 @@ func TestFilterTabFocusAndANSIInputSanitization(t *testing.T) {
 		if ansi.StringWidth(line) > m.width {
 			t.Fatalf("styled line exceeds width: %d > %d: %q", ansi.StringWidth(line), m.width, line)
 		}
+	}
+}
+
+func TestBrowserFooterKeepsHelpAndQuitVisible(t *testing.T) {
+	for _, width := range []int{80, 100, 110} {
+		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
+			m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+			m.width = width
+			view := m.View().Content
+			footer := view[strings.LastIndex(view, "\n")+1:]
+			if !strings.Contains(footer, "? help") || !strings.Contains(footer, "q quit") {
+				t.Fatalf("footer hid help or quit at width %d: %q", width, footer)
+			}
+		})
 	}
 }
 

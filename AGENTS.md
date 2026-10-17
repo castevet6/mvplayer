@@ -57,6 +57,13 @@ Codex orchestrates review and fixes. Claude reviews the PR head through
 running the review script, posting review responses, and committing and pushing
 fixes within the authorized scope. Existing feature approval gates still apply.
 
+Before starting work that needs GitHub CLI access, confirm that network-capable
+execution is available. If it is not already available, request escalated
+execution for the required `gh` commands before proceeding. Treat an API
+connection failure inside the sandbox as a possible network restriction; check
+GitHub CLI authentication in network-capable execution before concluding that
+credentials are invalid.
+
 After opening or updating a pull request:
 
 1. Run `./scripts/review-pr.sh <pr-number>` from the repository root and wait for
