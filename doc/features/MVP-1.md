@@ -4,7 +4,7 @@
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-17
 - Branch: feature/mvp-1-clear-pane-focus-and-selection
-- PR: pending
+- PR: https://github.com/castevet6/mvplayer/pull/1
 - Verification: passed
 
 ## Feature status
