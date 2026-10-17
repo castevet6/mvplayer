@@ -188,7 +188,6 @@ if [[ -z "$resume_dir" ]]; then
 	started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	stage "capturing PR base and head"
 	pr_json="$(gh api "repos/$repo/pulls/$pr")" || fail "could not read PR #$pr"
-	base_ref="$(jq -r .base.ref <<<"$pr_json")"
 	base_sha="$(jq -r .base.sha <<<"$pr_json")"
 	head_sha="$(jq -r .head.sha <<<"$pr_json")"
 	pr_ref="refs/codex/pr-review/$pr/$run_id/head"
@@ -200,9 +199,9 @@ if [[ -z "$resume_dir" ]]; then
 		git -C "$repo_root" update-ref -d "$base_git_ref" >/dev/null 2>&1 || true
 	}
 	trap cleanup EXIT
-	git fetch --quiet origin "pull/$pr/head:$pr_ref" "refs/heads/$base_ref:$base_git_ref" || fail "could not fetch captured PR commits"
+	git fetch --quiet origin "pull/$pr/head:$pr_ref" "$base_sha:$base_git_ref" || fail "could not fetch captured PR commits"
 	[[ "$(git rev-parse "$pr_ref")" == "$head_sha" ]] || fail "PR head moved during capture; start a fresh run"
-	[[ "$(git rev-parse "$base_git_ref")" == "$base_sha" ]] || fail "PR base moved during capture; start a fresh run"
+	[[ "$(git rev-parse "$base_git_ref")" == "$base_sha" ]] || fail "could not fetch captured PR base commit"
 
 	status="$(scripts/pr.sh status "$pr" --json)" || fail "could not read prior PR review state"
 	completed="$(jq -r .completed_review_rounds <<<"$status")"

@@ -39,7 +39,7 @@ load_status() {
 	pr_json="$(gh api "repos/$repo/pulls/$pr")"
 	reviews="$(gh api --paginate "repos/$repo/pulls/$pr/reviews" | jq -s 'add')"
 	issues="$(gh api --paginate "repos/$repo/issues/$pr/comments" | jq -s 'add')"
-	graphql_query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved path line comments(first:100){nodes{databaseId author{login} body createdAt} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}'
+	graphql_query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){pageInfo{hasNextPage endCursor} nodes{id isResolved path line comments(first:100){nodes{databaseId author{login} body createdAt} pageInfo{hasNextPage endCursor}}}}}}}'
 	threads="$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F number="$pr" -f query="$graphql_query" | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]?]')"
 	while IFS= read -r thread_id; do
 		[[ -n "$thread_id" ]] || continue
@@ -79,7 +79,7 @@ load_status() {
 		review_threads_truncated:false,
 		 checks:{check_runs:$checks,status_contexts:$statuses,
 		  passed:(if (($checks|length) + ($statuses|length)) == 0 then null else
-		   ([$checks[] | select(.conclusion != "SUCCESS" and .conclusion != "SKIPPED" and .conclusion != "NEUTRAL")]|length == 0) and
+		   ([$checks[] | select((.conclusion // "") | ascii_downcase | . != "success" and . != "skipped" and . != "neutral")]|length == 0) and
 		   ([$statuses[] | select(.state != "success")]|length == 0) end)}}
 	'
 }
@@ -99,8 +99,8 @@ status)
 		jq -r '
 			"PR #\(.number) \(.state | ascii_upcase): \(.url)",
 			"head \(.head_ref) \(.head_sha); base \(.base_ref) \(.base_sha)",
-			"Claude rounds: \(.completed_review_rounds); latest reviewed SHA: \(.latest_reviewed_sha // "unknown"); changed since review: \(.changes_after_last_review // "unknown")",
-			"checks passed: \(.checks.passed // "unknown")",
+			"Claude rounds: \(.completed_review_rounds); latest reviewed SHA: \(.latest_reviewed_sha // "unknown"); changed since review: \(if .changes_after_last_review == null then "unknown" else (.changes_after_last_review|tostring) end)",
+			"checks passed: \(if .checks.passed == null then "unknown" else (.checks.passed|tostring) end)",
 			(if (.unresolved_threads|length)==0 then "unresolved threads: none" else
 			 "unresolved threads:\n" + ([.unresolved_threads[] | "- \(.path):\(.line // "general") [\(.id)] " + ([.comments[] | "\(.author): \(.body | split("\n") | first)"] | join("; "))] | join("\n")) end)
 		' <<<"$result"
