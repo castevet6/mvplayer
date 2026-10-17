@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -28,7 +29,7 @@ func (m Model) View() tea.View {
 		lines = lines[:len(lines)-1]
 	}
 	for i := range lines {
-		lines[i] = fit(safeText(lines[i]), m.width)
+		lines[i] = fit(lines[i], m.width)
 	}
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.AltScreen = true
@@ -42,14 +43,14 @@ func (m Model) mainView() []string {
 	if wide {
 		left := (m.width - 3) / 2
 		right := m.width - 3 - left
-		lines = append(lines, fit(paneTitle("Browser", m.focus == browserPane, m.cursor, len(m.visible)), left)+" | "+fit(paneTitle("Queue", m.focus == queuePane, m.queueCursor, len(m.queue)), right))
-		browserContext := m.browseDir
+		lines = append(lines, m.widePaneTitle("Browser", browserPane, m.cursor, len(m.visible), left)+" | "+m.widePaneTitle("Queue", queuePane, m.queueCursor, len(m.queue), right))
+		browserContext := safeText(m.browseDir)
 		if m.filtering {
-			browserContext += "  Filter: " + m.query + "_"
+			browserContext += "  Filter (editing): " + safeText(m.query) + "_"
 		} else if m.query != "" {
-			browserContext += "  Filter: " + m.query
+			browserContext += "  Filter: " + safeText(m.query)
 		}
-		queueContext := "Tab focus • Enter play • [/] select • d remove"
+		queueContext := ""
 		lines = append(lines, fit(browserContext, left)+" | "+fit(queueContext, right))
 		browserRows := m.browserRows(m.browserOffset, listRows, left)
 		queueRows := m.queueRows(m.queueOffset, listRows, right)
@@ -64,19 +65,25 @@ func (m Model) mainView() []string {
 			lines = append(lines, fit(l, left)+" | "+fit(r, right))
 		}
 	} else {
+		header := m.narrowPaneName("Browser", browserPane) + "  " + m.narrowPaneName("Queue", queuePane)
+		if m.width >= 30 {
+			header += "  Tab switch"
+		}
+		lines = append(lines, header)
+		position, context := "0/0", safeText(m.browseDir)
 		if m.focus == browserPane {
-			lines = append(lines, paneTitle("Browser", true, m.cursor, len(m.visible)), "Queue hidden • Tab to focus queue")
-			context := m.browseDir
+			position = panePosition(m.cursor, len(m.visible))
 			if m.filtering {
-				context += "  Filter: " + m.query + "_"
+				context += "  Filter (editing): " + safeText(m.query) + "_"
 			} else if m.query != "" {
-				context += "  Filter: " + m.query
+				context += "  Filter: " + safeText(m.query)
 			}
-			lines[2] = context
+			lines = append(lines, position+"  "+context)
 			lines = append(lines, m.browserRows(m.browserOffset, listRows, m.width)...)
 		} else {
-			lines = append(lines, paneTitle("Queue", true, m.queueCursor, len(m.queue)), "Browser hidden • Tab to focus browser", "[ / ] select • Enter play • d remove")
-			lines = append(lines, m.queueRows(m.queueOffset, listRows-1, m.width)...)
+			position = panePosition(m.queueCursor, len(m.queue))
+			lines = append(lines, position+"  Queue")
+			lines = append(lines, m.queueRows(m.queueOffset, listRows, m.width)...)
 		}
 	}
 	for len(lines) < m.height-5 {
@@ -94,11 +101,15 @@ func (m Model) browserRows(offset, count, width int) []string {
 		if i == m.cursor {
 			mark = "> "
 		}
-		name := m.visible[i].Name
+		name := safeText(m.visible[i].Name)
 		if m.visible[i].Dir {
 			name += "/"
 		}
-		rows = append(rows, fit(mark+name, width))
+		row := mark + name
+		if i == m.cursor && m.focus == browserPane {
+			row = m.styleSelection("> " + name)
+		}
+		rows = append(rows, fit(row, width))
 	}
 	if len(rows) == 0 {
 		rows = append(rows, "No matching media files or directories.")
@@ -121,7 +132,12 @@ func (m Model) queueRows(offset, count, width int) []string {
 				mark = "* "
 			}
 		}
-		rows = append(rows, fit(mark+filepath.Base(m.queue[i]), width))
+		name := safeText(filepath.Base(m.queue[i]))
+		row := mark + name
+		if i == m.queueCursor && m.focus == queuePane {
+			row = m.styleSelection(mark + name)
+		}
+		rows = append(rows, fit(row, width))
 	}
 	if len(rows) == 0 {
 		rows = append(rows, "Queue is empty. Press Tab to return to browser.")
@@ -130,15 +146,58 @@ func (m Model) queueRows(offset, count, width int) []string {
 }
 
 func paneTitle(name string, focused bool, cursor, count int) string {
-	marker := " "
 	if focused {
-		marker = ">"
+		name = "[" + name + "]"
 	}
-	position := "0/0"
-	if count > 0 {
-		position = fmt.Sprintf("%d/%d", max(0, cursor)+1, count)
+	return fmt.Sprintf("%s  %s", name, panePosition(cursor, count))
+}
+
+func panePosition(cursor, count int) string {
+	if count <= 0 {
+		return "0/0"
 	}
-	return fmt.Sprintf("%s %s  %s", marker, name, position)
+	return fmt.Sprintf("%d/%d", max(0, cursor)+1, count)
+}
+
+func (m Model) widePaneTitle(name string, which pane, cursor, count, width int) string {
+	title := paneTitle(name, m.focus == which, cursor, count)
+	if m.focus != which {
+		return fit(title, width)
+	}
+	return m.styleHeading(fit(title, width))
+}
+
+func (m Model) narrowPaneName(name string, which pane) string {
+	if m.focus != which {
+		return name
+	}
+	return m.styleHeading("[" + name + "]")
+}
+
+func (m Model) styleHeading(s string) string {
+	if m.colorProfile == colorprofile.Unknown || m.colorProfile == colorprofile.NoTTY {
+		return s
+	}
+	if m.noColor || m.colorProfile == colorprofile.ASCII {
+		return "\x1b[1m" + s + "\x1b[0m"
+	}
+	if m.colorProfile >= colorprofile.ANSI {
+		return "\x1b[1;30;46m" + s + "\x1b[0m"
+	}
+	return s
+}
+
+func (m Model) styleSelection(s string) string {
+	if m.colorProfile == colorprofile.Unknown || m.colorProfile == colorprofile.NoTTY {
+		return s
+	}
+	if m.noColor || m.colorProfile == colorprofile.ASCII {
+		return "\x1b[1m" + s + "\x1b[0m"
+	}
+	if m.colorProfile >= colorprofile.ANSI {
+		return "\x1b[1;36m" + s + "\x1b[0m"
+	}
+	return s
 }
 
 func (m Model) statusLine() string {
@@ -174,28 +233,34 @@ func (m Model) mediaLine() string {
 	if m.pending == "" {
 		return "Media: —"
 	}
-	return "Media: " + m.pending
+	return "Media: " + safeText(m.pending)
 }
 
 func (m Model) errorLine(label string, err error) string {
 	if err == nil {
 		return ""
 	}
-	return label + ": " + err.Error()
+	return label + ": " + safeText(err.Error())
 }
 
 func (m Model) hints() string {
+	if m.width < 30 {
+		if m.filtering {
+			return "Tab switch • finish filter"
+		}
+		return "Tab switch • ? help"
+	}
 	if m.filtering {
-		return "Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab queue • Ctrl+C quit"
+		return "Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch • Ctrl+C quit"
 	}
 	if m.focus == browserPane {
-		return "Tab focus • ↑/k ↓/j move • Enter open/play • a enqueue • / filter • ? help • q quit"
+		return "Tab switch • ↑/k ↓/j move • Enter open/play • a enqueue • [/] select • d remove (Queue focus) • / filter • ? help • q quit"
 	}
-	return "Tab focus • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
+	return "Tab switch • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
 }
 
 func (m Model) helpView() []string {
-	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  /                   Edit current-directory filter (browser focus)", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry", "  n / p               Next / previous queue action", "  > selects a row; * marks the playing queue entry", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
+	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  /                   Edit current-directory filter (browser focus)", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets; active row marker and filename are bold cyan when color is enabled", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
 	if m.err != nil {
 		content = append(content, "", "Browser error: "+m.err.Error())
 	}
@@ -236,7 +301,6 @@ func fit(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	s = safeText(s)
 	if ansi.StringWidth(s) > width {
 		s = ansi.Truncate(s, width, "...")
 	}

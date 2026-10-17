@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"mvplayer/internal/browser"
 	"mvplayer/internal/playback"
@@ -460,6 +461,7 @@ func TestImmediatePlayPreservesQueueAndEnqueueRemoval(t *testing.T) {
 		t.Fatalf("immediate play changed queue: queue=%v index=%d", m.queue, m.queueIndex)
 	}
 	// Move to and remove the second pending entry.
+	m.focus = queuePane
 	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: ']', Text: "]"}))
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
@@ -603,6 +605,177 @@ func TestQueueMarkersUseASCIIAndDistinguishSelection(t *testing.T) {
 	view := m.View().Content
 	if !strings.Contains(view, "> selected.mp3") || !strings.Contains(view, "* playing.mp4") || strings.Contains(view, "▶") {
 		t.Fatalf("queue markers are not terminal-safe/distinct: %s", view)
+	}
+	m.queueCursor = 1
+	view = m.View().Content
+	if !strings.Contains(view, ">*playing.mp4") && !strings.Contains(view, ">* playing.mp4") {
+		t.Fatalf("combined selection/playback marker missing: %s", view)
+	}
+}
+
+func TestFocusPresentationAcrossResponsiveLayouts(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.colorProfile = colorprofile.ANSI
+	m.visible = []browser.Entry{{Name: "browser.mp4", Path: "/media/browser.mp4", Media: true}}
+	m.queue = []string{"/queue/queue.mp3"}
+	m.cursor, m.queueCursor = 0, 0
+	for _, width := range []int{24, 99, 100} {
+		m.width = width
+		m.focus = browserPane
+		view := m.View().Content
+		if width < 100 {
+			if !strings.Contains(view, "[Browser]") || !strings.Contains(view, "Queue") || !strings.Contains(view, "Tab switch") || !strings.Contains(view, "\x1b[1;30;46m[Browser]\x1b[0m") {
+				t.Fatalf("%d-column browser focus header: %q", width, view)
+			}
+		} else if !strings.Contains(view, "\x1b[1;30;46m[Browser]") || !strings.Contains(view, "\x1b[0m | ") || !strings.Contains(view, "> queue.mp3") {
+			t.Fatalf("%d-column wide focus/retained selection: %q", width, view)
+		}
+		if width == 99 && !strings.Contains(view, "\x1b[1;36m> browser.mp4\x1b[0m") {
+			t.Fatalf("active narrow row was not styled: %q", view)
+		}
+	}
+	m.width, m.focus, m.queue = 40, queuePane, nil
+	view := m.View().Content
+	if !strings.Contains(view, "[Queue]") || !strings.Contains(view, "0/0") || !strings.Contains(view, "Queue is empty") {
+		t.Fatalf("empty focused queue lost focus treatment: %q", view)
+	}
+}
+
+func TestTabSwitchKeepsIndependentCursorsAtBothBreakpoints(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.visible = []browser.Entry{{Name: "a.mp4"}, {Name: "b.mp4"}}
+	m.queue = []string{"/q/a.mp3", "/q/b.mp3", "/q/c.mp3"}
+	m.cursor, m.queueCursor = 1, 2
+	for _, width := range []int{99, 100} {
+		m.width = width
+		m.focus = browserPane
+		updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		m = updated.(Model)
+		if m.focus != queuePane || m.cursor != 1 || m.queueCursor != 2 {
+			t.Fatalf("%d-column Tab changed cursor state: focus=%d browser=%d queue=%d", width, m.focus, m.cursor, m.queueCursor)
+		}
+		if !strings.Contains(m.View().Content, "[Queue]") {
+			t.Fatalf("%d-column Queue focus not visible", width)
+		}
+		updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+		m = updated.(Model)
+		if m.focus != browserPane || m.cursor != 1 || m.queueCursor != 2 {
+			t.Fatalf("%d-column reverse Tab changed cursor state: focus=%d browser=%d queue=%d", width, m.focus, m.cursor, m.queueCursor)
+		}
+	}
+	m.queue = nil
+	m.focus = browserPane
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	m = updated.(Model)
+	if m.focus != queuePane || !strings.Contains(m.View().Content, "0/0") || !strings.Contains(m.View().Content, "Queue is empty") {
+		t.Fatalf("Tab did not focus empty queue: focus=%d view=%s", m.focus, m.View().Content)
+	}
+}
+
+func TestDeletionRequiresQueueFocus(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.player = &fakePlayer{}
+	m.queue = []string{"/queue/one.mp3", "/queue/two.mp3"}
+	m.queueCursor = 1
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
+	m = updated.(Model)
+	if len(m.queue) != 2 {
+		t.Fatalf("browser focus removed queue entry: %v", m.queue)
+	}
+	m.focus = queuePane
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'd', Text: "d"}))
+	m = updated.(Model)
+	if len(m.queue) != 1 || m.queue[0] != "/queue/one.mp3" {
+		t.Fatalf("queue focus did not remove selected pending entry: %v", m.queue)
+	}
+}
+
+func TestColorAndNoColorPresentation(t *testing.T) {
+	for _, tc := range []struct {
+		name, noColor string
+		wantColor     bool
+	}{
+		{name: "unset", wantColor: true},
+		{name: "empty", noColor: "", wantColor: true},
+		{name: "zero", noColor: "0"},
+		{name: "false", noColor: "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "unset" {
+				t.Setenv("NO_COLOR", "")
+			} else {
+				t.Setenv("NO_COLOR", tc.noColor)
+			}
+			m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+			m.colorProfile = colorprofile.ANSI
+			m.visible = []browser.Entry{{Name: "clip.mp4", Path: "/media/clip.mp4"}}
+			view := m.View().Content
+			hasColor := strings.Contains(view, "\x1b[1;30;46m") || strings.Contains(view, "\x1b[1;36m")
+			if hasColor != tc.wantColor {
+				t.Fatalf("color=%t, want %t: %q", hasColor, tc.wantColor, view)
+			}
+			if !tc.wantColor && !strings.Contains(view, "\x1b[1m") {
+				t.Fatalf("NO_COLOR should retain bold text cues: %q", view)
+			}
+		})
+	}
+	t.Setenv("NO_COLOR", "")
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.colorProfile = colorprofile.ASCII
+	m.visible = []browser.Entry{{Name: "clip.mp4", Path: "/media/clip.mp4"}}
+	if view := m.View().Content; strings.Contains(view, "\x1b[1;36m") || !strings.Contains(view, "\x1b[1m") {
+		t.Fatalf("ASCII profile should use bold only: %q", view)
+	}
+	m.colorProfile = colorprofile.NoTTY
+	if view := m.View().Content; strings.Contains(view, "\x1b[") {
+		t.Fatalf("NoTTY profile should use plain text: %q", view)
+	}
+}
+
+func TestFilterTabFocusAndANSIInputSanitization(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.colorProfile = colorprofile.ANSI
+	m.visible = []browser.Entry{{Name: "clip\x1b[31m.mp4", Path: "/media/clip.mp4"}}
+	m.filtering = true
+	m.query = "x\x1b[2J"
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	m = updated.(Model)
+	if m.filtering || m.focus != queuePane {
+		t.Fatalf("Tab did not finish filtering and focus Queue: %#v", m)
+	}
+	m.focus = browserPane
+	view := m.View().Content
+	if strings.Contains(view, "\x1b[31m") || strings.Contains(view, "\x1b[2J") || !strings.Contains(view, "Filter: x [2J") {
+		t.Fatalf("untrusted controls escaped into styled rendering: %q", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > m.width {
+			t.Fatalf("styled line exceeds width: %d > %d: %q", ansi.StringWidth(line), m.width, line)
+		}
+	}
+}
+
+func TestControlCharactersAreSanitizedBeforeStyling(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	m := NewWithLister("/media\x1b[2J", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.colorProfile = colorprofile.ANSI
+	m.browseDir = "/media\x1b[2J"
+	m.visible = []browser.Entry{{Name: "clip\x1b[31m.mp4", Path: "/media/clip.mp4"}}
+	m.err = errors.New("denied\x1b[2J")
+	m.query, m.filtering = "x\x1b[31m", true
+	view := m.View().Content
+	if strings.Contains(view, "\x1b[2J") || strings.Contains(view, "\x1b[31m") {
+		t.Fatalf("untrusted control sequence reached output: %q", view)
+	}
+	if !strings.Contains(view, "Filter (editing): x [31m") || !strings.Contains(view, "Browser error: denied [2J") || !strings.Contains(view, "/media [2J") {
+		t.Fatalf("sanitized user text missing: %q", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > m.width {
+			t.Fatalf("ANSI-aware fitting failed: width=%d line=%q", ansi.StringWidth(line), line)
+		}
 	}
 }
 
@@ -801,7 +974,7 @@ func TestResponsiveViewFitsFrameAndScrolls(t *testing.T) {
 	m.focus = queuePane
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 	m = updated.(Model)
-	if m.queueCursor < m.queueOffset || m.queueCursor >= m.queueOffset+max(1, m.height-9) {
+	if m.queueCursor < m.queueOffset || m.queueCursor >= m.queueOffset+max(1, m.height-8) {
 		t.Fatalf("queue selection is outside narrow viewport: cursor=%d offset=%d", m.queueCursor, m.queueOffset)
 	}
 }
