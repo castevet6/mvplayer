@@ -182,7 +182,7 @@ func (m Model) styleHeading(s string) string {
 		return "\x1b[1m" + s + "\x1b[0m"
 	}
 	if m.colorProfile >= colorprofile.ANSI {
-		return "\x1b[1;30;46m" + s + "\x1b[0m"
+		return "\x1b[1;97;44m" + s + "\x1b[0m"
 	}
 	return s
 }
@@ -195,7 +195,7 @@ func (m Model) styleSelection(s string) string {
 		return "\x1b[1m" + s + "\x1b[0m"
 	}
 	if m.colorProfile >= colorprofile.ANSI {
-		return "\x1b[1;36m" + s + "\x1b[0m"
+		return "\x1b[1;4m" + s + "\x1b[0m"
 	}
 	return s
 }
@@ -260,7 +260,7 @@ func (m Model) hints() string {
 }
 
 func (m Model) helpView() []string {
-	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  /                   Edit current-directory filter (browser focus)", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets; active row marker and filename are bold cyan when color is enabled", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
+	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  /                   Edit current-directory filter (browser focus)", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
 	if m.err != nil {
 		content = append(content, "", "Browser error: "+m.err.Error())
 	}

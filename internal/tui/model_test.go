@@ -625,13 +625,13 @@ func TestFocusPresentationAcrossResponsiveLayouts(t *testing.T) {
 		m.focus = browserPane
 		view := m.View().Content
 		if width < 100 {
-			if !strings.Contains(view, "[Browser]") || !strings.Contains(view, "Queue") || !strings.Contains(view, "Tab switch") || !strings.Contains(view, "\x1b[1;30;46m[Browser]\x1b[0m") {
+			if !strings.Contains(view, "[Browser]") || !strings.Contains(view, "Queue") || !strings.Contains(view, "Tab switch") || !strings.Contains(view, "\x1b[1;97;44m[Browser]\x1b[0m") {
 				t.Fatalf("%d-column browser focus header: %q", width, view)
 			}
-		} else if !strings.Contains(view, "\x1b[1;30;46m[Browser]") || !strings.Contains(view, "\x1b[0m | ") || !strings.Contains(view, "> queue.mp3") {
+		} else if !strings.Contains(view, "\x1b[1;97;44m[Browser]") || !strings.Contains(view, "\x1b[0m | ") || !strings.Contains(view, "> queue.mp3") {
 			t.Fatalf("%d-column wide focus/retained selection: %q", width, view)
 		}
-		if width == 99 && !strings.Contains(view, "\x1b[1;36m> browser.mp4\x1b[0m") {
+		if width == 99 && !strings.Contains(view, "\x1b[1;4m> browser.mp4\x1b[0m") {
 			t.Fatalf("active narrow row was not styled: %q", view)
 		}
 	}
@@ -711,7 +711,7 @@ func TestColorAndNoColorPresentation(t *testing.T) {
 			m.colorProfile = colorprofile.ANSI
 			m.visible = []browser.Entry{{Name: "clip.mp4", Path: "/media/clip.mp4"}}
 			view := m.View().Content
-			hasColor := strings.Contains(view, "\x1b[1;30;46m") || strings.Contains(view, "\x1b[1;36m")
+			hasColor := strings.Contains(view, "\x1b[1;97;44m")
 			if hasColor != tc.wantColor {
 				t.Fatalf("color=%t, want %t: %q", hasColor, tc.wantColor, view)
 			}
@@ -724,7 +724,7 @@ func TestColorAndNoColorPresentation(t *testing.T) {
 	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
 	m.colorProfile = colorprofile.ASCII
 	m.visible = []browser.Entry{{Name: "clip.mp4", Path: "/media/clip.mp4"}}
-	if view := m.View().Content; strings.Contains(view, "\x1b[1;36m") || !strings.Contains(view, "\x1b[1m") {
+	if view := m.View().Content; strings.Contains(view, "\x1b[1;97;44m") || !strings.Contains(view, "\x1b[1m") {
 		t.Fatalf("ASCII profile should use bold only: %q", view)
 	}
 	m.colorProfile = colorprofile.NoTTY

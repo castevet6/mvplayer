@@ -9,14 +9,12 @@
 
 ## Feature status
 
-- **Implementation progress:** Added explicit focused-pane heading and active-row
-  styling, retained inactive selection markers, responsive narrow headers,
-  Queue-focused deletion, ANSI-aware fitting, safe text handling, and updated
-  help/README guidance. Implementation is complete on the recorded feature
-  branch.
-- **Validation:** Automated tests and vet pass. Dark/light terminal capture
-  review remains pending and is required before the feature can be marked
-  verified.
+- **Implementation progress:** Updated the focus palette after the user's visual
+  review found the selected heading difficult to read. Active headings now use
+  bright white on blue; active rows use bold underline with the terminal's
+  default foreground. README and help describe the revised cues.
+- **Validation:** Full tests and vet pass after the palette revision. Visual
+  review of the revised palette on dark and light backgrounds remains pending.
 - **Blockers:** None identified during planning.
 
 Mark the feature complete only after the acceptance criteria below have been met.
@@ -31,6 +29,12 @@ criteria, and documentation changes described below.
 On 2026-10-17, the user requested implementation. Work began on
 `feature/mvp-1-clear-pane-focus-and-selection`, based on fetched `origin/develop`
 with the local feature-workflow commit carried onto the branch.
+
+After reviewing the first implementation, the user reported weak contrast in
+the focused-pane colors and requested a palette change. The revised scheme uses
+bright white on standard blue for the active heading and bold underline with
+the terminal's default foreground for the active row, so both adapt to dark and
+light terminal backgrounds. This supersedes the initial cyan palette.
 
 ## Type
 
@@ -48,20 +52,22 @@ Coordinate heading and row styling, preserve a quiet indication of each pane's
 remembered selection, and distinguish selection from queue playback. Require
 Queue focus before `d` can remove an item.
 
-Use the agreed cyan accent, with text cues that remain understandable without
-color. Useful precedents are
+Use high-contrast standard ANSI colors, with text cues that remain
+understandable without color. Useful precedents are
 [Lazygit's separate active-pane and retained-selection styles](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md#default)
 and [Yazi's separate active-tab and list-indicator styles](https://yazi-rs.github.io/docs/configuration/theme/#tabs).
 
 ## Visual and interaction specification
 
-- **Active heading:** Bracket the pane name, use bold black text on a cyan
+- **Active heading:** Bracket the pane name, use bold bright white text on a
+  standard blue
   background, and retain its position/count. In wide layouts, extend the
   background across that pane's heading width.
 - **Inactive heading:** Use plain terminal colors without brackets. Keep its
   position/count visible.
-- **Active selected row:** Retain `>` and apply bold cyan text to the marker and
-  filename. Do not add a background band.
+- **Active selected row:** Retain `>` and apply bold, underlined text using the
+  terminal's default foreground color to the marker and filename. Do not add a
+  background band.
 - **Inactive selection:** Retain a plain `>` on the remembered row, without
   dimming the filename.
 - **Playback marker:** Preserve `*` independently of focus and selection,
@@ -115,7 +121,7 @@ panes, and subsequent lines.
 
 ## Color behavior
 
-- Use standard ANSI cyan and black rather than requiring true color.
+- Use standard ANSI blue and bright white rather than requiring true color.
 - Respect any nonempty `NO_COLOR` value, including `0` and `false`, following
   the [NO_COLOR convention](https://no-color.org/).
 - With `NO_COLOR`, use brackets and bold only; emit no foreground/background
@@ -137,7 +143,7 @@ Add focused Go tests covering:
 - Filter editing and Tab exit behavior.
 - Layouts at 24, 99, and 100 columns; resizing; scrolling; long Unicode
   filenames.
-- Color, bold-only, and plain output; nonempty `NO_COLOR` variants.
+- Color, bold/underline, bold-only, and plain output; nonempty `NO_COLOR` variants.
 - ANSI display widths, style reset boundaries, and control characters in
   filenames, paths, queries, and errors.
 
@@ -160,15 +166,15 @@ Playback architecture and queue sequencing remain outside this feature.
 
 ## Verification results
 
-Automated verification on 2026-10-17:
+Automated verification on 2026-10-17, rerun after the palette revision:
 
 - `env GOCACHE=/tmp/mvplayer-gocache go test ./...` — passed.
 - `env GOCACHE=/tmp/mvplayer-gocache go vet ./...` — passed.
 - `gofmt -w internal/tui/model.go internal/tui/view.go internal/tui/model_test.go`
   — completed.
 
-Manual verification remains pending: capture and review representative wide
-(100+ columns) and narrow (24–99 columns) views with dark and light terminal
-backgrounds, including `NO_COLOR` monochrome output. Check that text remains
-legible, markers stay distinct, and the frame fits. User visual review is needed
-before setting status to `verified`.
+Manual verification remains pending for the revised palette: capture and review
+representative wide (100+ columns) and narrow (24–99 columns) views with dark and
+light terminal backgrounds, including `NO_COLOR` monochrome output. Check that
+text remains legible, markers stay distinct, and the frame fits. User visual
+review is needed before setting status to `verified`.

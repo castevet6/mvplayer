@@ -81,10 +81,11 @@ quit.
 
 The TUI shows the browser and queue side by side in terminals at least 100 columns
 wide. Narrower terminals show the focused pane, with both pane names in the header;
-press Tab to switch panes. The focused pane name is bracketed, and its selected
-row uses a bold cyan `>` marker and filename when color is available. A plain `>`
-marks the remembered selection in the other pane. The queue's `*` marks the
-playing item, so `>*` means the playing item is also selected. Use Up/Down or
+press Tab to switch panes. The focused pane name is bracketed, with white text on
+a blue background when color is available. Its selected row uses bold underlined
+text in the terminal's default foreground color. A plain `>` marks the remembered
+selection in the other pane. The queue's `*` marks the playing item, so `>*`
+means the playing item is also selected. Use Up/Down or
 `j`/`k` to move in the focused pane. Press `?` for scrollable shortcut help.
 Setting `NO_COLOR` disables colors while retaining the brackets and bold cues.
 
