@@ -39,14 +39,23 @@ own PR, or dismisses the reviewer bot.
 Use `scripts/pr.sh` as the source of truth for PR state and thread operations.
 Before starting a round, inspect all prior bot summaries, fallback comments,
 reviews, and unresolved threads, including other reviewers. Read the full thread
-context. A status failure is not a clean review.
+context. `scripts/pr.sh status <number>` provides the concise state;
+`scripts/pr.sh status <number> --json` includes checks, prior Claude rounds,
+full thread context, and whether the head changed after review. Use
+`scripts/pr.sh reply <number> <comment-id> --body-file <file>` for inline
+replies and `scripts/pr.sh resolve <number> <thread-node-id>` only after the
+thread is addressed. A status failure is not a clean review.
 
 Run `scripts/review-pr.sh <pr-number>` and wait for completion. It reviews a
 pinned base/head pair in a detached worktree. Round one assesses the PR. Round
 two receives the prior findings, replies, dispositions, and changes since the
 last reviewed head. At most two Claude reviews may be published per PR across
-sessions. Failed attempts before publication do not consume a round; retries
-reuse the saved run. A published fallback counts as one review.
+sessions. The runner serializes concurrent requests per PR and stores
+permission-restricted run artifacts under ignored `build/pr-review/`. Failed
+attempts before publication do not consume a round; retries use
+`scripts/review-pr.sh --resume <run-directory>` to publish the saved result
+without spending another Claude review. A published fallback counts as one
+review. Run `make test-pr-workflow` when changing these scripts.
 
 Fix all valid blocking findings, suggestions when clearly right, and trivial
 nits. Verify each proposed fix against actual behavior and affected states.

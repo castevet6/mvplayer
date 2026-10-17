@@ -39,8 +39,16 @@ load_status() {
 	pr_json="$(gh api "repos/$repo/pulls/$pr")"
 	reviews="$(gh api --paginate "repos/$repo/pulls/$pr/reviews" | jq -s 'add')"
 	issues="$(gh api --paginate "repos/$repo/issues/$pr/comments" | jq -s 'add')"
-	graphql_query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved path line comments(first:100){nodes{databaseId author{login} body createdAt} pageInfo{hasNextPage}}} pageInfo{hasNextPage endCursor}}}}}'
+	graphql_query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved path line comments(first:100){nodes{databaseId author{login} body createdAt} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}'
 	threads="$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F number="$pr" -f query="$graphql_query" | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]?]')"
+	while IFS= read -r thread_id; do
+		[[ -n "$thread_id" ]] || continue
+		cursor="$(jq -r --arg id "$thread_id" '.[] | select(.id == $id) | .comments.pageInfo.endCursor' <<<"$threads")"
+		comments_query='query($threadId:ID!,$endCursor:String){node(id:$threadId){... on PullRequestReviewThread{comments(first:100,after:$endCursor){nodes{databaseId author{login} body createdAt} pageInfo{hasNextPage endCursor}}}}}'
+		comment_pages="$(gh api graphql --paginate -F threadId="$thread_id" -F endCursor="$cursor" -f query="$comments_query")"
+		more_comments="$(jq -s '[.[].data.node.comments.nodes[]?]' <<<"$comment_pages")"
+		threads="$(jq --arg id "$thread_id" --argjson more "$more_comments" 'map(if .id == $id then .comments.nodes += $more | .comments.pageInfo.hasNextPage = false else . end)' <<<"$threads")"
+	done < <(jq -r '.[] | select(.comments.pageInfo.hasNextPage) | .id' <<<"$threads")
 	checks="$(gh api "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/check-runs" | jq '[.check_runs[]? | {name,status,conclusion}]')"
 	statuses="$(gh api "repos/$repo/commits/$(jq -r .head.sha <<<"$pr_json")/status" | jq '[.statuses[]? | {context,state,description}]')"
 
@@ -54,9 +62,9 @@ load_status() {
 			 round: (([$body | capture("round=(?<v>[0-9]+)")? | .v][0] | tonumber?) // null),
 			 reviewed_head: (([$body | capture("head=(?<v>[a-fA-F0-9]{40})")? | .v][0]) // null)};
 		([ $reviews[] | select(.user.login == $bot and ((.body // "") | contains("<!-- claude-review"))) |
-		  (marker(.body // "") + {source:"review", id:(.id|tostring), commit_id:.commit_id, created_at:.submitted_at}) ] +
+		  (marker(.body // "") + {source:"review", id:(.id|tostring), commit_id:.commit_id, summary:.body, created_at:.submitted_at}) ] +
 		 [ $issues[] | select(.user.login == $bot and ((.body // "") | contains("<!-- claude-review")) and ((.body // "") | startswith("### 🤖 Claude review"))) |
-		  (marker(.body // "") + {source:"fallback", id:(.id|tostring), commit_id:null, created_at:.created_at}) ]) as $rounds |
+		  (marker(.body // "") + {source:"fallback", id:(.id|tostring), commit_id:null, summary:.body, created_at:.created_at}) ]) as $rounds |
 		($rounds | map(if .run_id == null then . + {key:(.source + ":" + .id)} else . + {key:("run:" + .run_id)} end)
 		 | unique_by(.key) | sort_by(.created_at)) as $unique |
 		($unique | last | .reviewed_head // .commit_id // null) as $last_head |
@@ -66,8 +74,9 @@ load_status() {
 		 completed_review_rounds:($unique|length), latest_reviewed_sha:$last_head,
 		 changes_after_last_review:(if $last_head == null then null else $last_head != $pull.head.sha end),
 		 reviews:$unique,
+		 review_threads:([$threads[] | {id,is_resolved:.isResolved,path,line,comments:[.comments.nodes[] | {id:.databaseId,author:.author.login,body,created_at:.createdAt}],comments_truncated:.comments.pageInfo.hasNextPage}]),
 		 unresolved_threads:([$threads[] | select(.isResolved == false) | {id,path,line,comments:[.comments.nodes[] | {id:.databaseId,author:.author.login,body,created_at:.createdAt}],comments_truncated:.comments.pageInfo.hasNextPage}]),
-		 review_threads_truncated:([$threads[] | select(.comments.pageInfo.hasNextPage)]|length > 0),
+		review_threads_truncated:false,
 		 checks:{check_runs:$checks,status_contexts:$statuses,
 		  passed:(if (($checks|length) + ($statuses|length)) == 0 then null else
 		   ([$checks[] | select(.conclusion != "SUCCESS" and .conclusion != "SKIPPED" and .conclusion != "NEUTRAL")]|length == 0) and
