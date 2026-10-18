@@ -857,6 +857,118 @@ func TestDirectoryResultsIgnoreStaleRequests(t *testing.T) {
 	}
 }
 
+func TestRecursiveToggleRetainsFilterAndSelection(t *testing.T) {
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "album", "live", "song.flac")
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mediaPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewWithLister(root, browser.List)
+	m.playing = "/active/now.mp4"
+	m.pending = m.playing
+	m.queue = []string{"/queue/pending.mp3"}
+	m.visible = []browser.Entry{{Name: "song.flac", Path: mediaPath, Media: true}}
+	m.query = "live"
+	m.cursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"}))
+	m = updated.(Model)
+	if !m.recursive || !m.loading || m.query != "live" || cmd == nil {
+		t.Fatalf("recursive toggle state: recursive=%t loading=%t query=%q cmd=%t", m.recursive, m.loading, m.query, cmd != nil)
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	if m.loading || len(m.visible) != 1 || m.visible[0].Path != mediaPath || m.cursor != 0 {
+		t.Fatalf("recursive result did not retain path selection: loading=%t cursor=%d entries=%#v", m.loading, m.cursor, m.visible)
+	}
+	if m.playing != "/active/now.mp4" || len(m.queue) != 1 || m.queue[0] != "/queue/pending.mp3" {
+		t.Fatalf("recursive toggle changed playback or queue: playing=%q queue=%v", m.playing, m.queue)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "Recursive") || !strings.Contains(view, "album/live/song.flac") {
+		t.Fatalf("recursive view missing mode or relative path: %q", view)
+	}
+}
+
+func TestRecursiveWarningIsVisibleAndStaleWarningsAreIgnored(t *testing.T) {
+	root := t.TempDir()
+	m := NewWithLister(root, browser.List)
+	m.recursive = true
+	m.loading = true
+	m.request++
+	warning := "could not read failed; skipped 1 subtree(s)"
+	current := directoryResult{request: m.request, path: root, recursive: true, warning: warning}
+	updated, _ := m.Update(current)
+	m = updated.(Model)
+	if m.warning != warning || !strings.Contains(m.View().Content, "Partial results: "+warning) {
+		t.Fatalf("recursive warning missing from view: %q", m.View().Content)
+	}
+	stale := directoryResult{request: m.request - 1, path: root, recursive: true, warning: "stale warning"}
+	updated, _ = m.Update(stale)
+	if got := updated.(Model).warning; got != warning {
+		t.Fatalf("stale warning replaced current warning: %q", got)
+	}
+}
+
+func TestRecursiveMediaActionsUseAbsoluteEntryPath(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "one", "song.flac")
+	second := filepath.Join(root, "two", "song.flac")
+	player := &fakePlayer{}
+	m := NewWithLister(root, browser.List)
+	m.player = player
+	m.recursive = true
+	m.entries = []browser.Entry{
+		{Name: "one/song.flac", Path: first, RelativePath: "one/song.flac", Media: true},
+		{Name: "two/song.flac", Path: second, RelativePath: "two/song.flac", Media: true},
+	}
+	m.applyFilter()
+	m.cursor = 1
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'a', Text: "a"}))
+	m = updated.(Model)
+	if len(m.queue) != 1 || m.queue[0] != second {
+		t.Fatalf("enqueued path = %v, want %q", m.queue, second)
+	}
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	if cmd == nil {
+		t.Fatal("Enter did not select recursive media")
+	}
+	selected, ok := cmd().(FileSelectedMsg)
+	if !ok || selected.Path != second {
+		t.Fatalf("selected recursive media = %#v", selected)
+	}
+	if got := updated.(Model).selected; got != second {
+		t.Fatalf("model selected %q, want absolute path %q", got, second)
+	}
+}
+
+func TestRecursiveToggleKeyContextAndEmptySelection(t *testing.T) {
+	m := NewWithLister(t.TempDir(), func(string) ([]browser.Entry, error) { return nil, nil })
+	m.filtering = true
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"}))
+	m = updated.(Model)
+	if m.recursive || m.query != "r" {
+		t.Fatalf("r while filtering: recursive=%t query=%q", m.recursive, m.query)
+	}
+	m.filtering = false
+	m.focus = queuePane
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"}))
+	m = updated.(Model)
+	if m.recursive {
+		t.Fatal("r toggled recursive mode while Queue had focus")
+	}
+	m.focus = browserPane
+	m.recursive = true
+	m.visible = nil
+	m.cursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	if cmd != nil || updated.(Model).selected != "" {
+		t.Fatalf("empty recursive result remained actionable: selected=%q cmd=%t", updated.(Model).selected, cmd != nil)
+	}
+}
+
 func TestNavigationFilteringAndFileSelection(t *testing.T) {
 	root := t.TempDir()
 	sub := filepath.Join(root, "sub")
