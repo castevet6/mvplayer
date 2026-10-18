@@ -85,12 +85,14 @@ plan and commit/push that metadata update. Leave status `verified` until merge.
 
 ## Finalize after merge
 
-When finalization is requested, confirm the feature PR was merged into `develop`
-using remote evidence. A closed, unmerged PR is not complete.
+When the user reports that an authorized feature PR has merged, confirm the
+merge into `develop` using remote evidence. This message triggers finalization;
+no separate archive request is needed. A closed, unmerged PR is not complete.
 
-Update local `develop` from the remote, preserving unrelated work and stopping
-if local history has diverged. Record the feature PR URL, merge commit, and merge
-date; set `complete`; move the document with `git mv` to
+Update local `develop` from the remote while preserving unrelated work. Inspect
+divergent commits; continue past patch-equivalent duplicates, but stop and report
+unique local commits without rewriting shared history. Record the feature PR
+URL, merge commit, and merge date; set `complete`; move the document with `git mv` to
 `doc/features/done/MVP-<number>.md`. Repair links affected by the move.
 
 Check the documentation diff and affected links, then commit the finalization

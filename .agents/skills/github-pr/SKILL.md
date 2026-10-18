@@ -1,54 +1,95 @@
 ---
 name: github-pr
-description: Create or update GitHub pull requests with the GitHub CLI, run the repository Claude review workflow, and address PR findings and open review comments. Use for PR publication, updates, or review-comment follow-up.
+description: Create or update GitHub pull requests, run the repository Claude review, and address review findings.
 ---
 
 # GitHub pull requests
 
-Use `gh` to create or update a pull request, then report its URL and current
-state and leave it open. Read repository instructions first, including the
-"Pull requests and review" policy in `AGENTS.md`. For an MVPLAYER
-MVP feature, also follow [the feature workflow](../../../doc/FEATURE-WORKFLOW.md)
-and use the `mvplayer-feature` skill for its plan status and publication
-requirements.
+Use this skill for PR publication and review follow-up. Read `AGENTS.md` and,
+for MVP features, `doc/FEATURE-WORKFLOW.md` and the `mvplayer-feature` skill.
+`AGENTS.md` points here for PR mechanics; keep detailed round and API procedures
+in this skill rather than duplicating them there.
+
+## Access and authorization
+
+At the first GitHub task in each Codex chat, check whether network-capable
+`gh` execution is already available. If it is, use it without another prompt.
+If it is not, request the needed execution approval once, choosing the
+current-chat/session scope when the host offers that choice. After approval,
+reuse that access for authorized `gh` work throughout this chat; do not ask
+again for each ordinary PR command. If the host only offers command-scoped
+approval, request the narrowest available GitHub CLI access and reuse whatever
+authorization the host grants. Repository instructions cannot grant sandbox
+access or GitHub permissions.
+
+Once execution is network-capable, check `gh auth status` before diagnosing
+credentials. Execution approval only allows the command to run; it does not
+authenticate `gh`, expand token scopes, or authorize GitHub actions beyond the
+user's task and the PR workflow below. Keep tokens and keys out of output and
+comments.
+
+Opening or updating a PR authorizes the review workflow and in-scope fixes,
+checks, commits, pushes, and replies. Renew scope approval for material behavior
+or dependency changes. A human merges every PR; Codex never merges, approves its
+own PR, or dismisses the reviewer bot.
 
 ## Create or update
 
-1. Confirm the requested head and base branches, inspect the working tree and
-   commit range, and run the checks required by the repository. Review the diff
-   to describe the requested work accurately; do not perform an independent
-   code review as part of PR creation.
-2. Confirm `gh auth status` and repository context. Find an existing PR for the
-   head branch with `gh pr list --state all --head <branch>`. Update that PR when one exists;
-   otherwise create one with `gh pr create` and the requested base.
-3. Write a concise title and body that state the behavior change and validation.
-   Follow repository-specific requirements for feature identifiers, plan links,
-   target branches, and evidence. Use `--body-file` when the body has multiple
-   paragraphs or lists.
-4. Push only when publication is authorized by the user and repository
-   workflow. After opening or updating the PR, complete the review workflow
-   below before reporting completion. Leave the PR open for a human to merge.
+1. Confirm repository, head and base, local changes, commit range, and required
+   validation. Describe the actual diff without performing a separate Codex
+   review.
+2. Check authentication, then find an existing PR with
+   `gh pr list --state all --head <branch>`. Update it or create one for the
+   requested base. Use a body file for multiline descriptions.
+3. Push only when authorized. Leave the PR open and run the Claude review before
+   reporting it ready for human merge.
 
 ## Review and follow-up
 
-Follow the authoritative review procedure in `AGENTS.md`, including its commands,
-severity rules, two-round limit per PR across sessions, and reporting requirements.
-Run `./scripts/review-pr.sh <pr-number>` and wait for completion. Claude performs
-the review using `REVIEW.md`; Codex retrieves findings and open review comments,
-fixes actionable issues, validates changes, commits and pushes fixes, and replies
-with the outcome. This workflow authorizes those review responses without another
-permission request. It does not request an independent Codex code review.
+Use `scripts/pr.sh` as the source of truth for PR state and thread operations.
+Before starting a round, inspect all prior bot summaries, fallback comments,
+reviews, and unresolved threads, including other reviewers. Read the full thread
+context. `scripts/pr.sh status <number>` provides the concise state;
+`scripts/pr.sh status <number> --json` includes checks, prior Claude rounds,
+full thread context, and whether the head changed after review. Use
+`scripts/pr.sh reply <number> <comment-id> --body-file <file>` for inline
+replies and `scripts/pr.sh resolve <number> <thread-node-id>` only after the
+thread is addressed. Check state is `passed`, `failed`, `pending`, or `unknown`;
+pending work is not a failure or a completed validation. A status failure is
+not a clean review.
 
-Read review threads as well as review summaries and conversation comments. Use
-`gh api graphql` to retrieve paginated `reviewThreads` with `isResolved`, comments,
-and reply context when needed; inline comment listings alone do not indicate
-whether a thread is resolved. Account for previous bot reviews and fallback
-comments before starting another round. Fixes after the second round still need
-validation and publication; report them as changes made after the last review.
+Run `scripts/review-pr.sh <pr-number>` and wait for completion. It reviews a
+pinned base/head pair in a detached worktree. Round one assesses the PR. Round
+two receives the prior findings, replies, dispositions, and changes since the
+last reviewed head, including an incremental diff when that commit is
+available. At most two Claude reviews may be published per PR across sessions.
+The runner serializes concurrent requests per PR and stores
+permission-restricted run artifacts under ignored `build/pr-review/`. Failed
+attempts before publication do not consume a round; retries use
+`scripts/review-pr.sh --resume <run-directory>` to publish the saved result
+without spending another Claude review. A published fallback counts as one
+review. Run `make test-pr-workflow` when changing these scripts.
 
-If the script or required checks fail, report the failure and remaining work.
-Preserve feature approval gates when a finding requires a scope change. Leave
-unresolved or disputed blockers visible with an explanation and evidence.
+Fix all valid blocking findings, suggestions when clearly right, and trivial
+nits. Verify each proposed fix against actual behavior and affected states.
+Report scope changes or disputed findings and leave them unresolved with
+evidence. Run affected and repository-required checks. Commit and push fixes in
+scope, reply with the change and validation, and resolve fixed threads.
 
-Never merge a PR, approve your own PR, or dismiss the bot's review. A human
-performs merges.
+After round two, still fix and validate actionable findings, then push and reply
+without starting round three. Report changes made after the last reviewed head
+so the human can assess the remaining review gap.
+
+## Handoff and feature closure
+
+Report the PR URL, current head, latest reviewed head, review rounds, validation,
+unresolved findings, and changes made after review. Say it is ready for human
+merge only when no known blocker remains; this does not imply approval at an
+unreviewed final head.
+
+For a feature PR whose publication was authorized, a user message that it has
+merged triggers remote verification and feature finalization. Follow
+`doc/FEATURE-WORKFLOW.md`: record merge evidence, archive the feature plan, and
+push one small documentation commit directly to `develop`. Do not create an
+archive PR. If remote history has unique divergence or protection rejects the
+push, preserve the work and report the concrete blocker.
