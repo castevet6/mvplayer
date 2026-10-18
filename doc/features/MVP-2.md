@@ -53,9 +53,13 @@ user approved the interaction below and authorized implementation on 2026-10-18.
 ### Traversal and failure behavior
 
 - Use the existing recognized audio/video extensions. Omit hidden files and
-  hidden directories at every depth. Do not follow directory symlinks, avoiding
-  cycles and traversal outside the tree through links; retain existing handling
-  of recognized media-file symlinks. This is browsing, not a filesystem sandbox.
+  hidden directories at every depth. Show immediate directory symlinks as folder
+  rows, but do not descend into them during a scan of their parent root. Entering
+  one explicitly makes its link path the browsing root; scans from that root
+  include its contents and still skip directory symlinks beneath it. This avoids
+  automatic cycles and traversal outside the current tree through links; retain
+  existing handling of recognized media-file symlinks. This is browsing, not a
+  filesystem sandbox.
 - Run traversal outside the Bubble Tea update loop. Cancel obsolete scans on
   navigation, mode changes, and shutdown, and reject stale results using request
   identity, root, and mode. Cancellation must be checked between filesystem
@@ -87,7 +91,8 @@ advance playback. No arbitrary depth or file-count cap is proposed.
   playback nor changes pending queue items.
 - [ ] Filtering matches relative paths; mode changes retain query and selection
   where possible, and empty results cannot play or enqueue an obsolete item.
-- [ ] Hidden subtrees and directory symlinks are not traversed. Empty trees,
+- [ ] Hidden subtrees and nested directory symlinks are not traversed; immediate
+  symlinked folders appear as navigable rows. Empty trees,
   unreadable/disappearing descendants, and root failures have the specified UI.
 - [ ] Delayed results from obsolete scans cannot replace the current listing or
   warning. Obsolete scans stop cooperatively and quit remains responsive.
@@ -151,6 +156,12 @@ implementation under [the workflow](../FEATURE-WORKFLOW.md).
   partial failures, mode retention, stale warnings, and exact file actions.
 - 2026-10-18: Implementation and automated verification completed. Status is
   `implemented`; user visual and playback acceptance remains pending.
+- 2026-10-18: During user testing, the user reported that symlinked folders
+  should appear as folders. Reproduced omission in both modes with browser tests.
+  Updated behavior shows immediate directory symlinks as navigable rows without
+  traversing their targets from the parent scan; explicitly entering a link uses
+  it as the new browsing root. The approval remains `yes`; this records the
+  user's requested correction and its interaction behavior.
 
 ## Verification instructions
 

@@ -101,8 +101,9 @@ Press `r` in the Browser pane to toggle recursive browsing. Directory mode lists
 the current directory. Recursive mode shows immediate subfolders first, then
 recognized media beneath the browsing root with root-relative paths. Enter on a
 folder changes the root; Backspace returns to its parent while keeping the
-selected mode. Recursive scans omit hidden paths and do not follow directory
-symlinks.
+selected mode. Recursive scans omit hidden paths and skip directory symlinks
+under the current root. Immediate symlinked folders appear as rows and can be
+opened explicitly.
 
 Press `/` in the Browser pane to filter. The query matches names in Directory
 mode and displayed relative paths in Recursive mode, including folder names.

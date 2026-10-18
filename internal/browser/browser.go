@@ -19,9 +19,10 @@ type Entry struct {
 	Media        bool
 }
 
-// ListRecursive reads media beneath path without following directory symlinks.
-// Immediate directories are returned first as navigation rows. A descendant
-// read failure is reported as a warning while other readable paths are kept.
+// ListRecursive reads media beneath path without descending into directory
+// symlinks. Immediate directories, including directory symlinks, are returned
+// first as navigation rows. A descendant read failure is reported as a warning
+// while other readable paths are kept.
 func ListRecursive(ctx context.Context, path string) ([]Entry, string, error) {
 	return listRecursiveWithReadDir(ctx, path, os.ReadDir)
 }
@@ -67,10 +68,12 @@ func listRecursiveWithReadDir(ctx context.Context, path string, readDir func(str
 				return err
 			}
 			isDir := item.IsDir()
-			if !isDir && item.Type()&os.ModeSymlink != 0 {
-				if target, statErr := os.Stat(full); statErr == nil && target.IsDir() {
-					continue
+			isSymlinkDir := !isDir && isDirectorySymlink(item, full)
+			if isSymlinkDir {
+				if isRoot {
+					folders = append(folders, Entry{Name: name, Path: full, RelativePath: name, Dir: true})
 				}
+				continue
 			}
 			if isDir {
 				if isRoot {
@@ -120,7 +123,7 @@ func List(path string) ([]Entry, error) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		isDir := item.IsDir()
+		isDir := item.IsDir() || isDirectorySymlink(item, filepath.Join(path, name))
 		media := false
 		if !isDir {
 			_, media = mediaExtensions[strings.ToLower(filepath.Ext(name))]
@@ -132,6 +135,14 @@ func List(path string) ([]Entry, error) {
 	}
 	sortEntries(entries, false)
 	return entries, nil
+}
+
+func isDirectorySymlink(item os.DirEntry, path string) bool {
+	if item.Type()&os.ModeSymlink == 0 {
+		return false
+	}
+	target, err := os.Stat(path)
+	return err == nil && target.IsDir()
 }
 
 func sortEntries(entries []Entry, byRelative bool) {
