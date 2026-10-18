@@ -1,0 +1,48 @@
+=== RUN   TestPrintCaptureTmp
+--- wide ---
+MVPLAYER
+[Browser]  1/2                                             | Queue  0/0
+/media  Directory                                          |
+> clip.mp4                                                 | Queue is empty. Press Tab to return to browser.
+  song.flac                                                |
+                  ┌ File information ────────────────────────────────────────────────────────────────┐
+                  │Name: clip.mp4                                                                    │
+                  │Path: /media/album/clip.mp4                                                       │
+                  │Size: 7.00 MiB (7340032 bytes)                                                    │
+                  │Modified: 2026-10-18 12:30:00 +0300                                               │
+                  │                                                                                  │
+                  │Container: matroska,webm                                                          │
+                  │Duration: 00:02:34.567                                                            │
+                  │Overall bitrate: 1.2 Mbit/s                                                       │
+                  │                                                                                  │
+                  │Video streams                                                                     │
+                  │  Stream 0: vp9, 1280×720, 24.000 fps average, 1 Mbit/s                           │
+                  │                                                                                  │
+                  │Audio streams                                                                     │
+                  │  Stream 1: opus, 48000 Hz, 2 (stereo) channels, 128 kbit/s                       │
+                  │    Language: eng                                                                 │
+                  │    Title: Main                                                                   │
+                  │                                                                                  │
+                  └ Esc/i/Enter close • ↑↓/j/k scroll • PgUp/PgDn page ──────────────────────────────┘
+                                                           |
+Status: Idle  Volume: 0%
+Media: —
+
+
+? help • i info • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter
+--- narrow ---
+MVPLAYER
+┌ File information ────────────────────┐
+│Name: clip.mp4                        │
+│Path: /media/album/clip.mp4           │
+│Size: 7.00 MiB (7340032 bytes)        │
+│Modified: 2026-10-18 12:30:00 +0300   │
+│                                      │
+│Container: matroska,webm              │
+│Duration: 00:02:34.567                │
+│                                      │
+└ Esc/i/Enter • ↑↓ ────────────────────┘
+? help • i info • q quit • Tab • ↑↓ m...
+--- PASS: TestPrintCaptureTmp (0.00s)
+PASS
+ok  	mvplayer/internal/tui	0.010s

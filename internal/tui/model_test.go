@@ -968,6 +968,17 @@ func TestInfoModalDoesNotBufferDownScrollPastEnd(t *testing.T) {
 	}
 }
 
+func TestHumanSizeUsesBinaryUnits(t *testing.T) {
+	for _, tc := range []struct {
+		size int64
+		want string
+	}{{0, "0 B"}, {1023, "1023 B"}, {1024, "1.00 KiB"}, {7340032, "7.00 MiB"}, {1073741824, "1.00 GiB"}} {
+		if got := humanSize(tc.size); got != tc.want {
+			t.Errorf("humanSize(%d)=%q, want %q", tc.size, got, tc.want)
+		}
+	}
+}
+
 func TestRecursiveToggleRetainsFilterAndSelection(t *testing.T) {
 	root := t.TempDir()
 	mediaPath := filepath.Join(root, "album", "live", "song.flac")

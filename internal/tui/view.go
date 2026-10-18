@@ -355,7 +355,7 @@ func (m Model) infoPanelHeight(contentLines int) int {
 func (m Model) infoPageSize() int  { return max(1, m.infoPanelHeight(len(m.infoWrappedLines()))-3) }
 func (m Model) infoMaxOffset() int { return max(0, len(m.infoWrappedLines())-m.infoPageSize()) }
 func infoHint(width int) string {
-	if width < 40 {
+	if width < 50 {
 		return "Esc/i/Enter • ↑↓"
 	}
 	return "Esc/i/Enter close • ↑↓/j/k scroll • PgUp/PgDn page"
@@ -392,6 +392,9 @@ func humanSize(n int64) string {
 	for v >= 1024 && i < len(u)-1 {
 		v /= 1024
 		i++
+	}
+	if i > 0 {
+		i--
 	}
 	return fmt.Sprintf("%.2f %s", v, u[i])
 }

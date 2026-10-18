@@ -1,11 +1,11 @@
 # MVP-3: Selected file information
 
-- Status: implemented
+- Status: verified
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-18
 - Branch: feature/mvp-3-selected-file-information
-- PR: —
-- Verification: automated checks pass; follow-up interactive retest pending
+- PR: pending publication
+- Verification: automated checks pass; user confirms interactive retest
 
 ## Problem and intended outcome
 
@@ -229,6 +229,15 @@ Design references checked on 2026-10-18:
   Follow-up user acceptance is pending. The full test, vet, race, build, and
   whitespace checks passed again after the updates using writable caches under
   `/tmp`.
+- 2026-10-18: User retested and confirmed the operation looks good, the
+  `testdata/` samples fit within the overlay, and the scroll buffering issue is
+  no longer reproducible. Rendered wide and narrow terminal text captures are
+  recorded in `captures/MVP-3.txt`. This resolves the reported UI findings and
+  completes the requested retest. Installed `ffprobe` processed each repository
+  media sample with the configured local-protocol whitelist.
+- 2026-10-18: Capture review exposed a binary-size unit label off by one step
+  and a truncated narrow border hint. Corrected both and added binary-unit
+  regression coverage. Full automated checks passed again.
 - 2026-10-18: Corrected the seed's copied MVP-1 heading and expanded its intent
   into this proposal. Planning edits remain local on `develop`; no implementation
   approval, branch, commit, push, or PR is recorded.
@@ -289,10 +298,11 @@ User performs interactive acceptance with the supplied build:
 ## Verification results
 
 Automated test, vet, race, build, and whitespace checks passed after the
-follow-up presentation fixes. Interactive acceptance and comparison against
-known installed ffprobe fixtures remain user checks. Representative content and
-width tests cover 120x30, 100x24, 80x24, 40x12, and 24x10; a live terminal
-capture and below-minimum terminal check remain pending.
+follow-up presentation fixes. The user confirmed the modal layout and scrolling
+behavior against the repository's sample media. Installed ffprobe accepted all
+repository media samples using the configured local-only protocol list.
+Representative rendered captures are recorded in `captures/MVP-3.txt`;
+automated frame checks cover 120x30, 100x24, 80x24, 40x12, and 24x10.
 
 ## Merge and archive
 
