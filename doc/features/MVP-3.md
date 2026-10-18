@@ -4,7 +4,7 @@
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-18
 - Branch: feature/mvp-3-selected-file-information
-- PR: pending publication
+- PR: https://github.com/castevet6/mvplayer/pull/4
 - Verification: automated checks pass; user confirms interactive retest
 
 ## Problem and intended outcome
