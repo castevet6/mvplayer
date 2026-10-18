@@ -912,6 +912,34 @@ func TestRecursiveWarningIsVisibleAndStaleWarningsAreIgnored(t *testing.T) {
 	}
 }
 
+func TestChangingModeCancelsObsoleteRecursiveScan(t *testing.T) {
+	root := t.TempDir()
+	canceled := make(chan struct{})
+	m := NewWithLister(root, browser.List)
+	m.recursive = true
+	m.listRecursive = func(ctx context.Context, _ string) ([]browser.Entry, string, error) {
+		<-ctx.Done()
+		close(canceled)
+		return nil, "", ctx.Err()
+	}
+	oldScan := m.loadDirectory()
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"}))
+	m = updated.(Model)
+	if m.recursive {
+		t.Fatal("mode toggle did not return to Directory mode")
+	}
+	oldResult := oldScan()
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("obsolete recursive scan was not canceled")
+	}
+	updated, _ = m.Update(oldResult)
+	if updated.(Model).loading != true || updated.(Model).recursive {
+		t.Fatalf("obsolete result changed current scan state: %#v", updated.(Model))
+	}
+}
+
 func TestRecursiveMediaActionsUseAbsoluteEntryPath(t *testing.T) {
 	root := t.TempDir()
 	first := filepath.Join(root, "one", "song.flac")
