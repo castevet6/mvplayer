@@ -5,8 +5,9 @@ description: Create or update GitHub pull requests, run the repository Claude re
 
 # GitHub pull requests
 
-Use this skill for PR publication and review follow-up. Read `AGENTS.md` and,
-for MVP features, `doc/FEATURE-WORKFLOW.md` and the `mvplayer-feature` skill.
+Use this skill for PR publication and review follow-up on both ordinary changes
+and planned features. Read `AGENTS.md` for delivery-path selection. For an
+active MVP feature, also read `doc/FEATURE-WORKFLOW.md` and its feature document.
 `AGENTS.md` points here for PR mechanics; keep detailed round and API procedures
 in this skill rather than duplicating them there.
 
@@ -32,6 +33,15 @@ Opening or updating a PR authorizes the review workflow and in-scope fixes,
 checks, commits, pushes, and replies. Renew scope approval for material behavior
 or dependency changes. A human merges every PR; Codex never merges, approves its
 own PR, or dismisses the reviewer bot.
+
+For ordinary work assigned to the change-with-review path, an implementation
+request authorizes checks, focused commits, pushing the change branch, and
+opening a PR into `develop`, unless the user limits publication. Use a
+descriptive branch such as `fix/<description>` or `chore/<description>` based
+on current remote `develop`. Preserve unrelated work when preparing it. This
+path needs no MVP document or feature-plan approval. Planning or proposals
+alone authorize no publication. For planned features, preserve the separate
+approval and publication rules in `doc/FEATURE-WORKFLOW.md`.
 
 ## Create or update
 
@@ -93,3 +103,6 @@ merged triggers remote verification and feature finalization. Follow
 push one small documentation commit directly to `develop`. Do not create an
 archive PR. If remote history has unique divergence or protection rejects the
 push, preserve the work and report the concrete blocker.
+
+For an ordinary change PR, verify and report the merge when notified. There is
+no feature plan to archive or documentation finalization commit to create.

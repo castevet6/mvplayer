@@ -1,24 +1,53 @@
 # Repository Guidelines
 
-## Feature Workflow
+## Change workflow
 
-For MVP feature planning, approval, implementation, verification, PR creation,
-or post-merge archiving, read `doc/FEATURE-WORKFLOW.md` and use the repository
-skill at `.agents/skills/mvplayer-feature/SKILL.md`.
+Choose the delivery path from scope and risk, and state the choice briefly.
+Proceed without a classification approval when the choice is clear. Follow
+explicit user instructions about publication and review.
 
-For GitHub PR creation, updates, or review-comment follow-up, use
-`.agents/skills/github-pr/SKILL.md` and follow the pull request review policy below.
+| Path | Use when | Delivery |
+| --- | --- | --- |
+| Direct maintenance | Small, bounded, low-risk work, such as documentation clarifications, routine skill edits, or minor fixes preserving established behavior | Validate, commit, and push directly to `develop`. |
+| Change with review | Substantial fixes, refactoring, dependencies, CI, or changes affecting playback, persistence, permissions, or other sensitive behavior | Branch from `develop`, validate, and open a PR into `develop`; follow `.agents/skills/github-pr/SKILL.md`. No MVP document is required. |
+| Planned feature | The user explicitly starts or resumes the MVP feature lifecycle | Follow `doc/FEATURE-WORKFLOW.md`, with an MVP document, recorded approval, feature branch, PR, and post-merge archiving. |
 
-Feature plans are tracked in `doc/features/MVP-<number>.md`. Implementation
-requires explicit user approval recorded at the beginning of the plan. Missing,
-ambiguous, or negative approval blocks implementation: explain the gate and wait
-for explicit approval or an explicit exception. A request to implement alone
-does not override this gate. Record exceptions in the plan.
+Assess behavior and risk rather than file type or line count. Recommend formal
+feature planning when useful, but let the user choose it; ordinary requests do
+not create `MVP-*.md` documents automatically.
 
-Implement approved features on `feature/mvp-<number>-<hyphenated-description>`
-branches based on `develop`; target feature PRs at `develop`. Approval to mark a
-plan ready does not itself request implementation. Follow the workflow for
-scope changes, verification, and archiving after merge.
+### Direct maintenance
+
+An implementation request on this path authorizes affected checks, a focused
+commit, and a normal push to `develop`, unless the user limits publication.
+Planning or proposal requests alone do not authorize commits or pushes.
+
+Inspect the working tree and remote history before updating local `develop`.
+Preserve unrelated work and unique local commits; use a separate worktree when
+needed. Continue existing in-flight work on its established path unless the
+user changes it; prepare unrelated maintenance on `develop`, rather than adding
+it to an active or merged PR branch.
+
+Run checks appropriate to the change, inspect the final diff, commit, and push
+normally. Report validation, the commit, and whether it reached remote
+`develop`. If protection rejects the push, preserve the commit and report the
+restriction; create a PR only when requested. Direct maintenance requires no
+Claude PR review or feature archive.
+
+### Planned features
+
+Start the lifecycle explicitly with the `feature` skill at
+`.agents/skills/feature/SKILL.md` (invoke as `$feature`, or select it in the
+client's skill interface). Once started, the selected feature remains active
+through follow-up requests and merge notification; repeated invocation is
+unnecessary. For an existing feature context or an explicit request to resume
+`MVP-<number>`, read `doc/FEATURE-WORKFLOW.md` and its feature document.
+
+Feature implementation requires explicit user approval recorded at the
+beginning of `doc/features/MVP-<number>.md`. Missing, ambiguous, or negative
+approval blocks implementation until explicit approval or an explicit exception
+is recorded. An implementation request alone does not override this gate.
+Approval to mark a plan ready does not itself request implementation.
 
 ## Project Scope & Structure
 

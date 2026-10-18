@@ -1,9 +1,15 @@
 ---
-name: mvplayer-feature
-description: Plan, approve, implement, verify, publish PRs for, or archive mvplayer MVP feature documents. Use for requests concerning the MVP feature lifecycle; ordinary unrelated fixes do not require this workflow.
+name: feature
+description: Start or manage a planned MVPLAYER feature with an MVP document, approval, implementation, review, and closure.
 ---
 
 # MVPLAYER features
+
+This is an explicitly invoked entry point for the MVP lifecycle. Select an
+existing identifier or create a uniquely numbered document for a new request.
+Starting a new feature begins planning; it does not approve implementation.
+Keep the selected feature context for subsequent requests and merge notification.
+Ordinary maintenance and reviewed changes use the paths in `AGENTS.md`.
 
 Read [the feature workflow](../../../doc/FEATURE-WORKFLOW.md). It is the
 repository authority for statuses, approval, branch naming, publication

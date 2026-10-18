@@ -1,9 +1,29 @@
 # Feature workflow
 
-Feature requests, approved plans, and verification evidence are versioned with
-the code. Each feature has one document: `doc/features/MVP-<number>.md`.
+Planned MVP requests, approved plans, and verification evidence are versioned
+with the code. Each planned feature has one document: `doc/features/MVP-<number>.md`.
 Use [the template](templates/feature.md) for new requests. Keep the identifier
 unique across active and archived features.
+
+## Enter and continue the lifecycle
+
+Start a new planned feature explicitly with the `feature` skill
+(`$feature`, or select it in the client's skill interface). A new invocation
+starts planning and creates or selects the feature document; it grants no
+implementation approval. `/feature` is shorthand for this workflow in
+conversation, not a separately installed slash command.
+
+Once a feature is selected, follow-up requests about its plan, approval,
+implementation, verification, PR, or merge continue that feature without
+requiring another invocation. An explicit request to resume an existing MVP
+identifier also selects its document; inspect its approval and current status
+before acting. Other tasks do not inherit the feature lifecycle merely because
+they occur in the same chat or mention a feature.
+
+The delivery paths in `AGENTS.md` govern ordinary maintenance and reviewed
+changes. A request for a fix, refactor, or new behavior does not automatically
+create an MVP document. Recommend this lifecycle when formal planning would
+help and let the user choose whether to enter it.
 
 ## Status and approval
 
@@ -42,9 +62,9 @@ not require renewed approval. Preserve completed work and record deviations.
 3. When the user explicitly approves, record approval and set `ready`. A request
    to mark ready finishes here unless implementation was also requested.
 
-Planning edits stay on the current appropriate documentation branch. The feature
-branch must include the approved plan; preserve uncommitted work when preparing
-the implementation checkout.
+Prepare planning edits on `develop` or the feature's existing branch while
+preserving unrelated work. Planning alone does not authorize publication.
+Carry the approved plan into the implementation branch.
 
 ## Implement
 
@@ -106,6 +126,7 @@ remote `develop`.
 
 ## Example requests
 
+- “Use $feature to plan a new playlist feature.”
 - “Review MVP-2 and prepare its implementation plan.”
 - “Mark MVP-2 ready for implementation.”
 - “Implement MVP-2.”
