@@ -4,7 +4,7 @@
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-18
 - Branch: feature/mvp-2-recursive-browsing-mode
-- PR: —
+- PR: https://github.com/castevet6/mvplayer/pull/3
 - Verification: automated and user acceptance passed 2026-10-18
 
 ## Problem and intended outcome
@@ -165,6 +165,9 @@ implementation under [the workflow](../FEATURE-WORKFLOW.md).
 - 2026-10-18: User confirmed recursive browsing meets expectations and
   symlinked folders display correctly, and explicitly authorized marking
   verification complete. Status changed to `verified`.
+- 2026-10-18: Opened [PR #3](https://github.com/castevet6/mvplayer/pull/3)
+  targeting `develop` after confirming the feature branch was pushed and the
+  automated verification record was complete.
 
 ## Verification instructions
 
