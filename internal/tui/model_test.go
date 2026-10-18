@@ -940,6 +940,31 @@ func TestInfoModalFitsSupportedTerminalSizes(t *testing.T) {
 				t.Fatalf("%dx%d line %d has width %d: %q", size.Width, size.Height, i, width, line)
 			}
 		}
+		if size.Width == 120 && (!strings.Contains(view[1], "Browser") || !strings.Contains(view[1], "Queue")) {
+			t.Fatalf("wide modal did not leave the browser and queue panes behind it: %q", view[1])
+		}
+		if size.Width == 24 && !strings.Contains(strings.Join(view, "\n"), "┘") {
+			t.Fatal("narrow modal truncated its border hint")
+		}
+	}
+}
+
+func TestInfoModalDoesNotBufferDownScrollPastEnd(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height, m.infoOpen, m.infoPath = 80, 24, true, "/media/clip.mp4"
+	m.info = mediainfo.Info{Name: "clip.mp4", Path: m.infoPath, Format: "mp4", Duration: "00:00:10.000", Bitrate: "Unknown", Modified: time.Now()}
+	for i := 0; i < 20; i++ {
+		m.info.Audio = append(m.info.Audio, mediainfo.Stream{Index: i, Codec: "aac", Rate: "48000 Hz", ChannelsText: "2 (stereo)", Bitrate: "128 kbit/s", Language: "eng", Title: fmt.Sprintf("track %02d", i)})
+	}
+	for range 100 {
+		updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		m = updated.(Model)
+	}
+	atBottom := m.View().Content
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+	m = updated.(Model)
+	if got := m.View().Content; got == atBottom {
+		t.Fatalf("one Up press was absorbed at end: offset=%d max=%d\n%s", m.infoOffset, m.infoMaxOffset(), got)
 	}
 }
 

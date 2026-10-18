@@ -277,7 +277,40 @@ func (m Model) hints() string {
 func (m Model) infoView() []string {
 	panelWidth := min(m.width, 84)
 	left := (m.width - panelWidth) / 2
-	content := []string{"File information", "", "Name: " + safeText(filepath.Base(m.infoPath)), "Path: " + safeText(m.infoPath)}
+	wrapped := m.infoWrappedLines()
+	panelHeight := m.infoPanelHeight(len(wrapped))
+	page := m.infoPageSize()
+	offset := min(m.infoOffset, max(0, len(wrapped)-page))
+	end := min(len(wrapped), offset+page)
+	top := max(0, (m.height-panelHeight)/2)
+	background := m.mainView()
+	for len(background) < m.height {
+		background = append(background, "")
+	}
+	background = background[:m.height]
+	panel := []string{}
+	title := " File information "
+	topBorder := "┌" + title + strings.Repeat("─", max(0, panelWidth-ansi.StringWidth(title)-2)) + "┐"
+	panel = append(panel, fit(topBorder, panelWidth))
+	for _, line := range wrapped[offset:end] {
+		panel = append(panel, "│"+fit(line, panelWidth-2)+"│")
+	}
+	for len(panel) < panelHeight-1 {
+		panel = append(panel, "│"+fit("", panelWidth-2)+"│")
+	}
+	hint := infoHint(panelWidth)
+	bottom := "└ " + hint + " " + strings.Repeat("─", max(0, panelWidth-ansi.StringWidth(hint)-4)) + "┘"
+	panel = append(panel, fit(bottom, panelWidth))
+	for i, line := range panel {
+		if y := top + i; y >= 0 && y < m.height {
+			background[y] = overlayLine(background[y], line, left, panelWidth, m.width)
+		}
+	}
+	return background
+}
+
+func (m Model) infoWrappedLines() []string {
+	content := []string{"Name: " + safeText(filepath.Base(m.infoPath)), "Path: " + safeText(m.infoPath)}
 	if m.infoLoading {
 		content = append(content, "", "Loading file and media information…")
 	} else if m.infoErr != nil {
@@ -310,28 +343,32 @@ func (m Model) infoView() []string {
 	}
 	var wrapped []string
 	for _, line := range content {
-		wrapped = append(wrapped, strings.Split(ansi.Wrap(safeText(line), max(1, panelWidth-4), ""), "\n")...)
+		wrapped = append(wrapped, strings.Split(ansi.Wrap(safeText(line), max(1, min(m.width, 84)-4), ""), "\n")...)
 	}
-	panelHeight := min(m.height-3, max(7, min(len(wrapped)+2, m.height-3)))
-	page := max(1, panelHeight-3)
-	offset := min(m.infoOffset, max(0, len(wrapped)-page))
-	end := min(len(wrapped), offset+page)
-	top := max(0, (m.height-panelHeight-1)/2)
-	lines := make([]string, top)
-	border := strings.Repeat(" ", left) + "┌" + strings.Repeat("─", max(0, panelWidth-2)) + "┐"
-	lines = append(lines, border)
-	for _, line := range wrapped[offset:end] {
-		lines = append(lines, strings.Repeat(" ", left)+"│"+fit(line, panelWidth-2)+"│")
+	return wrapped
+}
+
+func (m Model) infoPanelHeight(contentLines int) int {
+	return min(m.height-2, max(8, min(contentLines+3, m.height-2)))
+}
+
+func (m Model) infoPageSize() int  { return max(1, m.infoPanelHeight(len(m.infoWrappedLines()))-3) }
+func (m Model) infoMaxOffset() int { return max(0, len(m.infoWrappedLines())-m.infoPageSize()) }
+func infoHint(width int) string {
+	if width < 40 {
+		return "Esc/i/Enter • ↑↓"
 	}
-	for len(lines) < top+panelHeight-1 {
-		lines = append(lines, strings.Repeat(" ", left)+"│"+fit("", panelWidth-2)+"│")
+	return "Esc/i/Enter close • ↑↓/j/k scroll • PgUp/PgDn page"
+}
+
+func overlayLine(background, panel string, left, panelWidth, width int) string {
+	background = fit(background, width)
+	if left <= 0 && panelWidth >= width {
+		return panel
 	}
-	lines = append(lines, strings.Repeat(" ", left)+"└"+strings.Repeat("─", max(0, panelWidth-2))+"┘")
-	if len(lines) > m.height {
-		lines = lines[:m.height]
-	}
-	lines = append(lines, fit("Esc/i/Enter close • ↑↓/j/k scroll • PgUp/PgDn page", m.width))
-	return lines
+	before := ansi.Cut(background, 0, left)
+	after := ansi.Cut(background, left+panelWidth, width)
+	return before + panel + after
 }
 func value(s string) string {
 	if s == "" {

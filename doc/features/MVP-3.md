@@ -5,7 +5,7 @@
 - Approved by/date: User / 2026-10-18
 - Branch: feature/mvp-3-selected-file-information
 - PR: —
-- Verification: automated checks pass; user interactive acceptance pending
+- Verification: automated checks pass; follow-up interactive retest pending
 
 ## Problem and intended outcome
 
@@ -219,6 +219,16 @@ Design references checked on 2026-10-18:
   `runtime/race: package testmain: cannot find package`; a fresh cache at
   `/tmp/mvplayer-mvp3-race-cache` passed. No installed-media fixture or
   interactive user acceptance has been performed; those checks remain pending.
+- 2026-10-18: User verification found that the modal lacked the browser/queue
+  backdrop, its close/scroll guidance was detached from the border, and its
+  height caused avoidable scrolling. The down-scroll offset also kept growing
+  past the last page. Updated the modal to overlay the existing view, use more
+  terminal height, put controls in the bottom border, and clamp line/page scroll
+  to the current content. Added a regression test that fails with the previous
+  unbounded offset and passes with the clamp, plus a wide-frame backdrop check.
+  Follow-up user acceptance is pending. The full test, vet, race, build, and
+  whitespace checks passed again after the updates using writable caches under
+  `/tmp`.
 - 2026-10-18: Corrected the seed's copied MVP-1 heading and expanded its intent
   into this proposal. Planning edits remain local on `develop`; no implementation
   approval, branch, commit, push, or PR is recorded.
@@ -278,10 +288,11 @@ User performs interactive acceptance with the supplied build:
 
 ## Verification results
 
-Automated checks passed as recorded above. Interactive acceptance and comparison
-against known installed ffprobe fixtures remain user checks. Representative
-content and width tests cover 120x30, 100x24, 80x24, 40x12, and 24x10; a live
-terminal capture and below-minimum terminal check remain pending.
+Automated test, vet, race, build, and whitespace checks passed after the
+follow-up presentation fixes. Interactive acceptance and comparison against
+known installed ffprobe fixtures remain user checks. Representative content and
+width tests cover 120x30, 100x24, 80x24, 40x12, and 24x10; a live terminal
+capture and below-minimum terminal check remain pending.
 
 ## Merge and archive
 

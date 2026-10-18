@@ -256,6 +256,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 && msg.Height > 0 {
 			m.width, m.height = msg.Width, msg.Height
+			if m.infoOpen {
+				m.infoOffset = min(m.infoOffset, m.infoMaxOffset())
+			}
 			m.keepVisible()
 		}
 		return m, nil
@@ -368,11 +371,11 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.infoOffset = max(0, m.infoOffset-1)
 		case "down", "j":
-			m.infoOffset++
+			m.infoOffset = min(m.infoMaxOffset(), m.infoOffset+1)
 		case "pgup":
-			m.infoOffset = max(0, m.infoOffset-max(1, m.height-5))
+			m.infoOffset = max(0, m.infoOffset-m.infoPageSize())
 		case "pgdown":
-			m.infoOffset += max(1, m.height-5)
+			m.infoOffset = min(m.infoMaxOffset(), m.infoOffset+max(1, m.infoPageSize()))
 		case "q":
 			if m.scanCancel != nil {
 				m.scanCancel()
