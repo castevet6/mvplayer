@@ -1,11 +1,11 @@
 # MVP-2: Recursive browsing mode
 
-- Status: implemented
+- Status: verified
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-18
 - Branch: feature/mvp-2-recursive-browsing-mode
 - PR: —
-- Verification: automated passed; user visual/playback checks pending
+- Verification: automated and user acceptance passed 2026-10-18
 
 ## Problem and intended outcome
 
@@ -80,25 +80,25 @@ advance playback. No arbitrary depth or file-count cap is proposed.
 
 ## Acceptance criteria
 
-- [ ] Default startup and nonrecursive browsing preserve established behavior.
-- [ ] Browser-only `r` toggles mode; filter input, help, and Queue focus obey the
+- [x] Default startup and nonrecursive browsing preserve established behavior.
+- [x] Browser-only `r` toggles mode; filter input, help, and Queue focus obey the
   proposed key rules. Root and mode remain recognizable in both layouts.
-- [ ] Recursive results contain every eligible media path once, with immediate
+- [x] Recursive results contain every eligible media path once, with immediate
   folder navigation rows above a deterministically sorted media list.
-- [ ] Duplicate basenames in different folders are distinguishable by relative
+- [x] Duplicate basenames in different folders are distinguishable by relative
   path, and both play/enqueue the correct absolute file.
-- [ ] Enter/Backspace change root while retaining mode; neither action interrupts
+- [x] Enter/Backspace change root while retaining mode; neither action interrupts
   playback nor changes pending queue items.
-- [ ] Filtering matches relative paths; mode changes retain query and selection
+- [x] Filtering matches relative paths; mode changes retain query and selection
   where possible, and empty results cannot play or enqueue an obsolete item.
-- [ ] Hidden subtrees and nested directory symlinks are not traversed; immediate
+- [x] Hidden subtrees and nested directory symlinks are not traversed; immediate
   symlinked folders appear as navigable rows. Empty trees,
   unreadable/disappearing descendants, and root failures have the specified UI.
-- [ ] Delayed results from obsolete scans cannot replace the current listing or
+- [x] Delayed results from obsolete scans cannot replace the current listing or
   warning. Obsolete scans stop cooperatively and quit remains responsive.
-- [ ] Wide/narrow views, resizing, scrolling, long Unicode paths, control
+- [x] Wide/narrow views, resizing, scrolling, long Unicode paths, control
   characters in filesystem names, and monochrome output remain usable and bounded.
-- [ ] Required automated checks and user visual/playback checks pass, with
+- [x] Required automated checks and user visual/playback checks pass, with
   representative terminal captures recorded before verification is complete.
 
 ## Questions and dependencies
@@ -162,6 +162,9 @@ implementation under [the workflow](../FEATURE-WORKFLOW.md).
   traversing their targets from the parent scan; explicitly entering a link uses
   it as the new browsing root. The approval remains `yes`; this records the
   user's requested correction and its interaction behavior.
+- 2026-10-18: User confirmed recursive browsing meets expectations and
+  symlinked folders display correctly, and explicitly authorized marking
+  verification complete. Status changed to `verified`.
 
 ## Verification instructions
 
@@ -203,6 +206,10 @@ Automated verification completed on 2026-10-18:
 - `env GOCACHE=/tmp/mvplayer-gocache go build -o build/mvplayer ./cmd/mvplayer` — passed.
 - `git diff --check` — passed.
 
+User verification: on 2026-10-18, the user confirmed recursive browsing met
+expectations and symlinked folders displayed correctly, and explicitly requested
+that verification be marked complete.
+
 An 80×24 PTY run with root media plus `album/live/song.flac` and
 `other/song.flac` showed the default `Directory` label, then the `Recursive`
 label and both relative paths after pressing `r`. The root and mode remained
@@ -225,9 +232,8 @@ terminal excerpt:
   song.flac
 ```
 
-User visual and real-media acceptance remains pending. Follow the checks above
-at wide and narrow widths, verify matching-basename playback/enqueue, and test
-responsiveness while scanning before marking the feature verified.
+The feature is verified based on automated results, the recorded PTY capture, and
+the user's acceptance report.
 
 ## Merge and archive
 
