@@ -1,6 +1,6 @@
 # MVP-2: Recursive browsing mode
 
-- Status: verified
+- Status: complete
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-18
 - Branch: feature/mvp-2-recursive-browsing-mode
@@ -112,7 +112,7 @@ advance playback. No arbitrary depth or file-count cap is proposed.
    if the user's expected library size requires it.
 
 No additional dependency is expected. The recorded interaction approval covers
-implementation under [the workflow](../FEATURE-WORKFLOW.md).
+implementation under [the workflow](../../FEATURE-WORKFLOW.md).
 
 ## Implementation plan
 
@@ -168,6 +168,8 @@ implementation under [the workflow](../FEATURE-WORKFLOW.md).
 - 2026-10-18: Opened [PR #3](https://github.com/castevet6/mvplayer/pull/3)
   targeting `develop` after confirming the feature branch was pushed and the
   automated verification record was complete.
+- 2026-10-18: PR #3 was merged into `develop` at 2026-10-18 18:36:09 UTC.
+  Merge commit: `a1c0d131e52b10a6bce27db069adde8a3e65cfb0`.
 
 ## Verification instructions
 
@@ -240,4 +242,7 @@ the user's acceptance report.
 
 ## Merge and archive
 
-Pending implementation, verification, PR, and confirmed merge into `develop`.
+PR: [#3](https://github.com/castevet6/mvplayer/pull/3)
+
+Merged into `develop` on 2026-10-18 at 18:36:09 UTC. Merge commit:
+`a1c0d131e52b10a6bce27db069adde8a3e65cfb0`.

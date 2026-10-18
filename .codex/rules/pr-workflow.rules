@@ -1,0 +1,59 @@
+prefix_rule(
+    pattern = ["gh", "auth", "status"],
+    decision = "allow",
+    justification = "Check GitHub CLI authentication for the repository PR workflow",
+)
+
+prefix_rule(
+    pattern = ["gh", "repo", "view"],
+    decision = "allow",
+    justification = "Read the repository name for PR operations",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", ["list", "create", "view", "edit"]],
+    decision = "allow",
+    justification = "Find, create, and update the repository pull request",
+)
+
+prefix_rule(
+    pattern = ["gh", "api"],
+    decision = "allow",
+    justification = "Read and update PR reviews, comments, threads, and checks",
+)
+
+prefix_rule(
+    pattern = ["git", ["status", "log", "diff", "fetch", "rev-parse", "cat-file", "add", "commit", "push"]],
+    decision = "allow",
+    justification = "Inspect and publish the feature branch and PR fixes",
+)
+
+prefix_rule(
+    pattern = ["git", "worktree"],
+    decision = "allow",
+    justification = "Create and clean up the detached worktree used for PR review",
+)
+
+prefix_rule(
+    pattern = ["git", "update-ref"],
+    decision = "allow",
+    justification = "Clean up temporary refs used for PR review",
+)
+
+prefix_rule(
+    pattern = ["git", ["switch", "merge", "mv"]],
+    decision = "allow",
+    justification = "Update develop and archive a merged feature plan",
+)
+
+prefix_rule(
+    pattern = ["scripts/pr.sh", ["status", "reply", "resolve"]],
+    decision = "allow",
+    justification = "Run the repository PR status and review-thread helpers",
+)
+
+prefix_rule(
+    pattern = ["scripts/review-pr.sh"],
+    decision = "allow",
+    justification = "Run the repository's pinned Claude PR review workflow",
+)
