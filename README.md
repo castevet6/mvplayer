@@ -28,6 +28,7 @@ Use `mvplayer --version` to inspect the version embedded in a build.
 - Debian desktop with Wayland or X11
 - Go 1.26 or newer to build
 - mpv 0.40.0 was used for acceptance; other versions may behave differently
+- `ffprobe` from Debian's `ffmpeg` package for file information (`i` in the Browser pane)
 - A keyboard-driven terminal (tested with `TERM=xterm-256color`)
 - Audio output for audible playback; a video-capable desktop session for video
 
@@ -36,6 +37,12 @@ Install the Debian playback dependency with:
 ```sh
 sudo apt update
 sudo apt install mpv
+```
+
+Install `ffprobe` to inspect media details with `i`:
+
+```sh
+sudo apt install ffmpeg
 ```
 
 Install Go 1.26 or newer separately if the Go version provided by your Debian
@@ -127,6 +134,13 @@ mode and displayed relative paths in Recursive mode, including folder names.
 Type printable characters, including shortcut letters, then press Enter or
 Escape to finish. Backspace deletes while filtering and navigates to the parent
 directory otherwise; Ctrl+U clears the filter.
+
+Press `i` on a selected browser media file to inspect its file details, container,
+duration, bitrate, and audio/video streams. The information view can be closed
+with Escape, `i`, or Enter; use Up/Down or `j`/`k` to scroll and PageUp/PageDown
+to move a page. Other keys are ignored while it is open, except `q` and Ctrl+C
+to quit. Filesystem details remain available if `ffprobe` is missing or cannot
+read the file; the view shows the installation command when needed.
 
 During playback, these shortcuts work in both the terminal and the video window:
 Space toggles pause, Left/Right (or `h`/`l`) seek by five seconds, `+`/`-`
