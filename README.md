@@ -74,7 +74,9 @@ make test
 make
 ```
 
-`make` builds the `build/mvplayer` executable. Build outputs live in the ignored
+`make` builds the `build/mvplayer` executable. `make release` builds a smaller
+executable at the same path by stripping symbol tables and debugging information,
+while preserving version metadata. Build outputs live in the ignored
 `build/` directory. `make run` starts
 the interactive player, and `make run ARGS="/path/to/media-file"` passes a
 path argument. Environment variables such as `GOCACHE=/tmp/mvplayer-gocache`

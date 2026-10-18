@@ -1,4 +1,4 @@
-.PHONY: all build run test test-pr-workflow install uninstall clean
+.PHONY: all build release run test test-pr-workflow install uninstall clean
 
 BUILD_DIR ?= build
 BIN ?= $(BUILD_DIR)/mvplayer
@@ -13,6 +13,10 @@ all: build
 build:
 	mkdir -p "$(dir $(BIN))"
 	go build -buildvcs=false -ldflags '$(VERSION_FLAGS)' -o "$(BIN)" ./cmd/mvplayer
+
+release:
+	mkdir -p "$(dir $(BIN))"
+	go build -buildvcs=false -ldflags '-s -w $(VERSION_FLAGS)' -o "$(BIN)" ./cmd/mvplayer
 
 run:
 	go run -ldflags '$(VERSION_FLAGS)' ./cmd/mvplayer $(ARGS)
