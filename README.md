@@ -97,10 +97,19 @@ pending item when immediate playback is active). Enter on a browser file plays
 immediately without changing pending queue entries. The queue accepts duplicates
 and advances after natural EOF.
 
-Press `/` in the browser to filter the current directory. Type any printable
-characters, including shortcut letters, then press Enter or Escape to finish.
-Backspace deletes while filtering and navigates to the parent directory otherwise;
-Ctrl+U clears the filter.
+Press `r` in the Browser pane to toggle recursive browsing. Directory mode lists
+the current directory. Recursive mode shows immediate subfolders first, then
+recognized media beneath the browsing root with root-relative paths. Enter on a
+folder changes the root; Backspace returns to its parent while keeping the
+selected mode. Recursive scans omit hidden paths and skip directory symlinks
+under the current root. Immediate symlinked folders appear as rows and can be
+opened explicitly.
+
+Press `/` in the Browser pane to filter. The query matches names in Directory
+mode and displayed relative paths in Recursive mode, including folder names.
+Type printable characters, including shortcut letters, then press Enter or
+Escape to finish. Backspace deletes while filtering and navigates to the parent
+directory otherwise; Ctrl+U clears the filter.
 
 During playback, these shortcuts work in both the terminal and the video window:
 Space toggles pause, Left/Right (or `h`/`l`) seek by five seconds, `+`/`-`
@@ -118,7 +127,7 @@ managed mpv process and private socket.
 Playback allows software graphics rendering when GPU acceleration is unavailable,
 including remote desktops. Supported media formats depend on the codecs in the
 installed mpv build. The queue and preferences are in-memory only. The player
-browses one directory at a time, omits hidden and unsupported entries, and does
-not provide streaming, subtitles or track selection, repeat, shuffle, or saved
-queues. Global desktop shortcuts are out of scope; video-window shortcuts work
-when that window has keyboard focus.
+omits hidden and unsupported entries, and does not provide streaming, subtitles
+or track selection, repeat, shuffle, or saved queues. Global desktop shortcuts
+are out of scope; video-window shortcuts work when that window has keyboard
+focus.

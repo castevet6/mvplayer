@@ -38,13 +38,16 @@ func (m Model) View() tea.View {
 
 func (m Model) mainView() []string {
 	wide := m.width >= 100
-	listRows := max(1, m.height-8)
+	listRows := m.listRows()
 	lines := []string{"MVPLAYER"}
 	if wide {
 		left := (m.width - 3) / 2
 		right := m.width - 3 - left
 		lines = append(lines, m.widePaneTitle("Browser", browserPane, m.cursor, len(m.visible), left)+" | "+m.widePaneTitle("Queue", queuePane, m.queueCursor, len(m.queue), right))
-		browserContext := safeText(m.browseDir)
+		browserContext := safeText(m.browseDir) + "  " + m.browserModeLabel()
+		if m.loading {
+			browserContext += "  Scanning..."
+		}
 		if m.filtering {
 			browserContext += "  Filter (editing): " + safeText(m.query) + "_"
 		} else if m.query != "" {
@@ -70,7 +73,10 @@ func (m Model) mainView() []string {
 			header += "  Tab switch"
 		}
 		lines = append(lines, header)
-		position, context := "0/0", safeText(m.browseDir)
+		position, context := "0/0", safeText(m.browseDir)+"  "+m.browserModeLabel()
+		if m.loading {
+			context += "  Scanning..."
+		}
 		if m.focus == browserPane {
 			position = panePosition(m.cursor, len(m.visible))
 			if m.filtering {
@@ -81,6 +87,7 @@ func (m Model) mainView() []string {
 			lines = append(lines, position+"  "+context)
 			lines = append(lines, m.browserRows(m.browserOffset, listRows, m.width)...)
 		} else {
+			lines = append(lines, context)
 			position = panePosition(m.queueCursor, len(m.queue))
 			lines = append(lines, position+"  Queue")
 			lines = append(lines, m.queueRows(m.queueOffset, listRows, m.width)...)
@@ -89,7 +96,7 @@ func (m Model) mainView() []string {
 	for len(lines) < m.height-5 {
 		lines = append(lines, "")
 	}
-	lines = append(lines, m.statusLine(), m.mediaLine(), m.errorLine("Browser error", m.err), m.errorLine("Playback error", m.playbackErr), m.hints())
+	lines = append(lines, m.statusLine(), m.mediaLine(), m.browserNoticeLine(), m.errorLine("Playback error", m.playbackErr), m.hints())
 	return lines
 }
 
@@ -102,6 +109,9 @@ func (m Model) browserRows(offset, count, width int) []string {
 			mark = "> "
 		}
 		name := safeText(m.visible[i].Name)
+		if m.visible[i].RelativePath != "" && !m.visible[i].Dir {
+			name = safeText(m.visible[i].RelativePath)
+		}
 		if m.visible[i].Dir {
 			name += "/"
 		}
@@ -111,7 +121,9 @@ func (m Model) browserRows(offset, count, width int) []string {
 		}
 		rows = append(rows, fit(row, width))
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && m.loading {
+		rows = append(rows, "Scanning...")
+	} else if len(rows) == 0 {
 		rows = append(rows, "No matching media files or directories.")
 	}
 	return rows
@@ -254,15 +266,18 @@ func (m Model) hints() string {
 		return "Ctrl+C quit • Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch"
 	}
 	if m.focus == browserPane {
-		return "? help • q quit • Tab switch • ↑/k ↓/j move • Enter open/play • a enqueue • [/] select • / filter"
+		return "? help • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter"
 	}
 	return "Tab switch • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
 }
 
 func (m Model) helpView() []string {
-	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  /                   Edit current-directory filter (browser focus)", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
+	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  r                   Toggle recursive browsing (browser focus)", "  /                   Filter displayed names or relative paths", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
 	if m.err != nil {
 		content = append(content, "", "Browser error: "+m.err.Error())
+	}
+	if m.warning != "" {
+		content = append(content, "Partial results: "+m.warning)
 	}
 	if m.playbackErr != nil {
 		content = append(content, "Playback error: "+m.playbackErr.Error())
@@ -284,6 +299,23 @@ func (m Model) helpView() []string {
 	}
 	end := min(len(content), m.helpOffset+page)
 	return append([]string(nil), content[m.helpOffset:end]...)
+}
+
+func (m Model) browserModeLabel() string {
+	if m.recursive {
+		return "Recursive"
+	}
+	return "Directory"
+}
+
+func (m Model) browserNoticeLine() string {
+	if m.err != nil {
+		return m.errorLine("Browser error", m.err)
+	}
+	if m.warning == "" {
+		return ""
+	}
+	return "Partial results: " + safeText(m.warning)
 }
 
 func formatTime(seconds float64) string { n := int(seconds); return fmt.Sprintf("%d:%02d", n/60, n%60) }

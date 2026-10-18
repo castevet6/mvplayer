@@ -17,10 +17,12 @@ import (
 )
 
 type directoryResult struct {
-	request uint64
-	path    string
-	entries []browser.Entry
-	err     error
+	request   uint64
+	path      string
+	recursive bool
+	entries   []browser.Entry
+	warning   string
+	err       error
 }
 type loadResult struct {
 	path    string
@@ -34,6 +36,7 @@ type controlResult struct{ err error }
 type FileSelectedMsg struct{ Path string }
 
 type listDirectory func(string) ([]browser.Entry, error)
+type listRecursive func(context.Context, string) ([]browser.Entry, string, error)
 
 type pane uint8
 
@@ -50,6 +53,9 @@ type Model struct {
 	cursor           int
 	query            string
 	filtering        bool
+	recursive        bool
+	loading          bool
+	warning          string
 	err              error
 	playbackErr      error
 	focus            pane
@@ -63,6 +69,10 @@ type Model struct {
 	pending          string
 	request          uint64
 	list             listDirectory
+	listRecursive    listRecursive
+	scanCancel       context.CancelFunc
+	scanContext      context.Context
+	restorePath      string
 	player           playback.Player
 	playing          string
 	status           playback.State
@@ -86,6 +96,13 @@ func New(browseDir, playFile string, player playback.Player) Model {
 
 func NewWithContext(ctx context.Context, browseDir, playFile string, player playback.Player) Model {
 	m := NewWithLister(browseDir, browser.List)
+	if m.scanCancel != nil {
+		m.scanCancel()
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.scanContext, m.scanCancel = context.WithCancel(ctx)
 	m.pending = playFile
 	m.awaitingPlayback = playFile != ""
 	if playFile != "" {
@@ -102,7 +119,8 @@ func NewWithContext(ctx context.Context, browseDir, playFile string, player play
 func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error)) Model {
 	noColorValue, noColorSet := os.LookupEnv("NO_COLOR")
 	noColor := noColorSet && noColorValue != ""
-	return Model{browseDir: browseDir, list: list, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor}
+	scanContext, scanCancel := context.WithCancel(context.Background())
+	return Model{browseDir: browseDir, list: list, listRecursive: browser.ListRecursive, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor, scanContext: scanContext, scanCancel: scanCancel, loading: true}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -155,26 +173,38 @@ func (m Model) load(path string) tea.Cmd {
 }
 
 func (m Model) loadDirectory() tea.Cmd {
-	request, path, list := m.request, m.browseDir, m.list
+	request, path, recursive, list, recursiveList := m.request, m.browseDir, m.recursive, m.list, m.listRecursive
+	ctx := m.scanContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return func() tea.Msg {
+		if recursive {
+			entries, warning, err := recursiveList(ctx, path)
+			return directoryResult{request: request, path: path, recursive: recursive, entries: entries, warning: warning, err: err}
+		}
 		entries, err := list(path)
-		return directoryResult{request: request, path: path, entries: entries, err: err}
+		return directoryResult{request: request, path: path, recursive: recursive, entries: entries, err: err}
 	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case directoryResult:
-		if msg.request != m.request || msg.path != m.browseDir {
+		if msg.request != m.request || msg.path != m.browseDir || msg.recursive != m.recursive {
 			return m, nil
 		}
-		oldPath := ""
-		if m.cursor >= 0 && m.cursor < len(m.visible) {
+		m.loading = false
+		m.warning = msg.warning
+		oldPath := m.restorePath
+		m.restorePath = ""
+		if oldPath == "" && m.cursor >= 0 && m.cursor < len(m.visible) {
 			oldPath = m.visible[m.cursor].Path
 		}
 		m.err, m.entries = msg.err, msg.entries
 		m.applyFilter()
 		m.restoreBrowserSelection(oldPath)
+		m.keepVisible()
 		return m, nil
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 && msg.Height > 0 {
@@ -265,6 +295,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.String() == "ctrl+c" {
+		if m.scanCancel != nil {
+			m.scanCancel()
+		}
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -283,6 +316,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			m.helpOffset += m.helpPageSize()
 		case "q":
+			if m.scanCancel != nil {
+				m.scanCancel()
+			}
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -312,6 +348,9 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.String() == "q" {
+		if m.scanCancel != nil {
+			m.scanCancel()
+		}
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -319,6 +358,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.focus = 1 - m.focus
 		m.keepVisible()
 		return m, nil
+	}
+	if key.String() == "r" && m.focus == browserPane {
+		m.startDirectoryScan(!m.recursive, true)
+		return m, m.loadDirectory()
 	}
 	if key.String() == "?" {
 		m.help, m.helpOffset = true, 0
@@ -426,8 +469,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		parent := filepath.Dir(m.browseDir)
 		if parent != m.browseDir {
 			m.browseDir = parent
-			m.request++
-			m.entries, m.visible, m.cursor, m.err, m.query = nil, nil, 0, nil, ""
+			m.startDirectoryScan(m.recursive, false)
 			return m, m.loadDirectory()
 		}
 	case "enter":
@@ -441,8 +483,7 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			entry := m.visible[m.cursor]
 			if entry.Dir {
 				m.browseDir = entry.Path
-				m.request++
-				m.entries, m.visible, m.cursor, m.err, m.query = nil, nil, 0, nil, ""
+				m.startDirectoryScan(m.recursive, false)
 				return m, m.loadDirectory()
 			}
 			m.selected = entry.Path
@@ -451,6 +492,29 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	m.keepVisible()
 	return m, nil
+}
+
+func (m *Model) startDirectoryScan(recursive, preserveQuery bool) {
+	if m.cursor >= 0 && m.cursor < len(m.visible) {
+		m.restorePath = m.visible[m.cursor].Path
+	}
+	if m.scanCancel != nil {
+		m.scanCancel()
+	}
+	base := m.appContext
+	if base == nil {
+		base = context.Background()
+	}
+	m.scanContext, m.scanCancel = context.WithCancel(base)
+	m.request++
+	m.recursive = recursive
+	m.loading = true
+	m.warning = ""
+	m.entries, m.visible, m.cursor, m.err = nil, nil, 0, nil
+	m.browserOffset = 0
+	if !preserveQuery {
+		m.query = ""
+	}
 }
 
 func (m *Model) nextQueue() tea.Cmd {
@@ -519,9 +583,17 @@ func (m *Model) restoreBrowserSelection(path string) {
 }
 
 func (m *Model) keepVisible() {
-	rows := max(1, m.height-8)
+	rows := m.listRows()
 	m.browserOffset = visibleOffset(m.browserOffset, m.cursor, len(m.visible), rows)
 	m.queueOffset = visibleOffset(m.queueOffset, m.queueCursor, len(m.queue), rows)
+}
+
+func (m Model) listRows() int {
+	rows := m.height - 8
+	if m.width < 100 && m.focus == queuePane {
+		rows--
+	}
+	return max(1, rows)
 }
 
 func visibleOffset(offset, cursor, count, rows int) int {

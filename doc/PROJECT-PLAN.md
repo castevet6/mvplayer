@@ -60,7 +60,7 @@ Validate:
 
 ## Defaults and Follow-up Work
 
-Start with session-only state, name-sorted directory listings, hidden files omitted, and nonrecursive browsing. Include directories and recognized video and audio extensions, including common audio types such as `.mp3`, `.flac`, `.ogg`, `.opus`, `.m4a`, and `.wav`; mpv determines whether selected media is playable.
+Start with session-only state, name-sorted directory listings, hidden files omitted, and nonrecursive browsing by default. Optional recursive browsing is described in MVP-2. Include directories and recognized video and audio extensions, including common audio types such as `.mp3`, `.flac`, `.ogg`, `.opus`, `.m4a`, and `.wav`; mpv determines whether selected media is playable.
 
 Keep initial styling and shortcuts built in. Defer user configuration, themes, packaging automation, and persistent history until the basic workflow is usable.
 
