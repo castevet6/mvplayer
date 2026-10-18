@@ -1,6 +1,6 @@
 # MVP-3: Selected file information
 
-- Status: verified
+- Status: complete
 - Implementation approved: yes
 - Approved by/date: User / 2026-10-18
 - Branch: feature/mvp-3-selected-file-information
@@ -175,7 +175,7 @@ Design references checked on 2026-10-18:
 ## Implementation plan
 
 1. Record explicit implementation approval for this updated plan under the
-   [feature workflow](../FEATURE-WORKFLOW.md).
+   [feature workflow](../../FEATURE-WORKFLOW.md).
 2. Add `internal/mediainfo` with normalized filesystem/container/stream results,
    optional values, and distinct file/probe failures. Implement bounded,
    cancellable ffprobe execution and JSON parsing behind a small inspection API.
@@ -229,7 +229,7 @@ Design references checked on 2026-10-18:
 - 2026-10-18: User retested and confirmed the operation looks good, the
   `testdata/` samples fit within the overlay, and the scroll buffering issue is
   no longer reproducible. Rendered wide and narrow terminal text captures are
-  recorded in `captures/MVP-3.txt`. This resolves the reported UI findings and
+  recorded in `../captures/MVP-3.txt`. This resolves the reported UI findings and
   completes the requested retest. Installed `ffprobe` processed each repository
   media sample with the configured local-protocol whitelist.
 - 2026-10-18: Capture review exposed a binary-size unit label off by one step
@@ -308,11 +308,13 @@ Automated test, vet, race, build, and whitespace checks passed after the
 follow-up presentation fixes. The user confirmed the modal layout and scrolling
 behavior against the repository's sample media. Installed ffprobe accepted all
 repository media samples using the configured local-only protocol list.
-Representative rendered captures are recorded in `captures/MVP-3.txt`;
+Representative rendered captures are recorded in `../captures/MVP-3.txt`;
 automated frame checks cover 120x30, 100x24, 80x24, 40x12, and 24x10.
 Round-two follow-up changes were rechecked locally after the final review; the PR
 reviewed head predates those last bitrate-formatting and test-stability changes.
 
 ## Merge and archive
 
-Pending. Record PR, merge commit, and merge date after confirmed merge.
+- PR: [#4](https://github.com/castevet6/mvplayer/pull/4)
+- Merge commit: `4e3250f1c0ad5a7f40b590408f63d89803747bcb`
+- Merged into `develop` on 2026-10-18.
