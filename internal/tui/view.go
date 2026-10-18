@@ -38,10 +38,7 @@ func (m Model) View() tea.View {
 
 func (m Model) mainView() []string {
 	wide := m.width >= 100
-	listRows := max(1, m.height-8)
-	if !wide && m.focus == queuePane {
-		listRows = max(1, m.height-9)
-	}
+	listRows := m.listRows()
 	lines := []string{"MVPLAYER"}
 	if wide {
 		left := (m.width - 3) / 2

@@ -204,6 +204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err, m.entries = msg.err, msg.entries
 		m.applyFilter()
 		m.restoreBrowserSelection(oldPath)
+		m.keepVisible()
 		return m, nil
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 && msg.Height > 0 {
@@ -510,6 +511,7 @@ func (m *Model) startDirectoryScan(recursive, preserveQuery bool) {
 	m.loading = true
 	m.warning = ""
 	m.entries, m.visible, m.cursor, m.err = nil, nil, 0, nil
+	m.browserOffset = 0
 	if !preserveQuery {
 		m.query = ""
 	}
@@ -581,9 +583,17 @@ func (m *Model) restoreBrowserSelection(path string) {
 }
 
 func (m *Model) keepVisible() {
-	rows := max(1, m.height-8)
+	rows := m.listRows()
 	m.browserOffset = visibleOffset(m.browserOffset, m.cursor, len(m.visible), rows)
 	m.queueOffset = visibleOffset(m.queueOffset, m.queueCursor, len(m.queue), rows)
+}
+
+func (m Model) listRows() int {
+	rows := m.height - 8
+	if m.width < 100 && m.focus == queuePane {
+		rows--
+	}
+	return max(1, rows)
 }
 
 func visibleOffset(offset, cursor, count, rows int) int {

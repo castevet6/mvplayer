@@ -892,6 +892,49 @@ func TestRecursiveToggleRetainsFilterAndSelection(t *testing.T) {
 	}
 }
 
+func TestDirectoryResultKeepsRestoredSelectionVisible(t *testing.T) {
+	root := t.TempDir()
+	m := NewWithLister(root, func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height = 80, 12
+	for i := 0; i < 30; i++ {
+		path := filepath.Join(root, fmt.Sprintf("old-%02d.mp3", i))
+		m.visible = append(m.visible, browser.Entry{Name: filepath.Base(path), Path: path, Media: true})
+	}
+	m.cursor, m.browserOffset = 25, 20
+	selectedPath := m.visible[m.cursor].Path
+	m.startDirectoryScan(true, true)
+	entries := make([]browser.Entry, 12)
+	for i := range entries {
+		path := filepath.Join(root, fmt.Sprintf("new-%02d.mp3", i))
+		entries[i] = browser.Entry{Name: filepath.Base(path), Path: path, RelativePath: filepath.Base(path), Media: true}
+	}
+	entries[10] = browser.Entry{Name: "restored.mp3", Path: selectedPath, RelativePath: "restored.mp3", Media: true}
+	updated, _ := m.Update(directoryResult{request: m.request, path: root, recursive: true, entries: entries})
+	m = updated.(Model)
+	if m.cursor != 10 || m.cursor < m.browserOffset || m.cursor >= m.browserOffset+m.listRows() {
+		t.Fatalf("restored selection is outside viewport: cursor=%d offset=%d rows=%d", m.cursor, m.browserOffset, m.listRows())
+	}
+	if !strings.Contains(m.View().Content, "> restored.mp3") {
+		t.Fatalf("restored selection is not rendered: %s", m.View().Content)
+	}
+}
+
+func TestNarrowQueueScrollUsesRenderedRowCount(t *testing.T) {
+	m := NewWithLister(t.TempDir(), func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height, m.focus = 80, 12, queuePane
+	for i := 0; i < 10; i++ {
+		m.queue = append(m.queue, fmt.Sprintf("/queue/%d.mp3", i))
+	}
+	m.queueCursor = 3
+	m.keepVisible()
+	if m.queueCursor < m.queueOffset || m.queueCursor >= m.queueOffset+m.listRows() {
+		t.Fatalf("queue selection is outside viewport: cursor=%d offset=%d rows=%d", m.queueCursor, m.queueOffset, m.listRows())
+	}
+	if !strings.Contains(m.View().Content, "> 3.mp3") {
+		t.Fatalf("selected queue row is not rendered: %s", m.View().Content)
+	}
+}
+
 func TestRecursiveWarningIsVisibleAndStaleWarningsAreIgnored(t *testing.T) {
 	root := t.TempDir()
 	m := NewWithLister(root, browser.List)
