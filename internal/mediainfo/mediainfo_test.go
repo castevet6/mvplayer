@@ -41,8 +41,15 @@ func TestParsePreservesBitratePrecisionAndRoundsDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Duration != "01:00:00.000" || p.Bitrate != "1.5 Mbit/s" || p.Audio[0].Bitrate != "1.4112 Mbit/s" {
+	if p.Duration != "01:00:00.000" || p.Bitrate != "1.5 Mbit/s" || p.Audio[0].Bitrate != "1.41 Mbit/s" {
 		t.Fatalf("normalized values: %#v", p)
+	}
+	arbitrary, err := Parse([]byte(`{"format":{"bit_rate":"2345678"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arbitrary.Bitrate != "2.35 Mbit/s" {
+		t.Fatalf("arbitrary bitrate=%q", arbitrary.Bitrate)
 	}
 	p, err = Parse([]byte(`{"format":{"duration":"59.9996"}}`))
 	if err != nil {
@@ -164,11 +171,32 @@ func TestDefaultRunBoundsOutputAndReturnsExitStatus(t *testing.T) {
 func TestDefaultRunCancellationKillsAndReapsChild(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
 	sleepScript := writeExecutable(t, "#!/bin/sh\nprintf '%s' \"$$\" > \"$1\"\nexec sleep 60\n")
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
 	start := time.Now()
-	_, _, runErr := defaultRun(ctx, sleepScript, pidFile)
-	if runErr == nil || time.Since(start) > 3*time.Second {
+	type result struct{ err error }
+	done := make(chan result, 1)
+	go func() { _, _, err := defaultRun(ctx, sleepScript, pidFile); done <- result{err} }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(pidFile); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			<-done
+			t.Fatal("helper child did not start before deadline")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	var runErr error
+	select {
+	case got := <-done:
+		runErr = got.err
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled process did not return promptly")
+	}
+	if runErr == nil || time.Since(start) > 6*time.Second {
 		t.Fatalf("cancelled process did not return promptly: err=%v elapsed=%s", runErr, time.Since(start))
 	}
 	data, err := os.ReadFile(pidFile)

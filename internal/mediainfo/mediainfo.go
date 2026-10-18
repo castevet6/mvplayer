@@ -239,6 +239,7 @@ func bitrate(s string) string {
 		n /= 1000
 		i++
 	}
+	n = math.Round(n*100) / 100
 	return strconv.FormatFloat(n, 'f', -1, 64) + " " + units[i]
 }
 func duration(s string) string {

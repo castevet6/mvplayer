@@ -241,6 +241,11 @@ Design references checked on 2026-10-18:
   fixes put cover art in its own section, preserve bitrate precision, normalize
   duration rounding, use all panel rows, correct the feature record, and exercise
   subprocess output caps, timeout, exit failure, cancellation, and reaping.
+- 2026-10-18: Claude PR review round 2 confirmed the round-1 fixes and found
+  bitrate formatting could expose excess precision and the child-process test
+  had a short launch race. Rounded scaled bitrates to two decimals and changed
+  the test to wait for the child PID before cancelling. These follow-up changes
+  were made after the second and final review round.
 - 2026-10-18: Corrected the seed's copied MVP-1 heading and expanded its intent
   into this proposal. Planning edits were first made locally on `develop`.
 - 2026-10-18: Recommended a dismissible modal and basic filesystem information;
@@ -305,6 +310,8 @@ behavior against the repository's sample media. Installed ffprobe accepted all
 repository media samples using the configured local-only protocol list.
 Representative rendered captures are recorded in `captures/MVP-3.txt`;
 automated frame checks cover 120x30, 100x24, 80x24, 40x12, and 24x10.
+Round-two follow-up changes were rechecked locally after the final review; the PR
+reviewed head predates those last bitrate-formatting and test-stability changes.
 
 ## Merge and archive
 
