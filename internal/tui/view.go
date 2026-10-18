@@ -317,15 +317,16 @@ func (m Model) infoWrappedLines() []string {
 		content = append(content, "", "File error: "+safeText(m.infoErr.Error()))
 	} else {
 		content = append(content, fmt.Sprintf("Size: %s (%d bytes)", humanSize(m.info.Size), m.info.Size), "Modified: "+m.info.Modified.Format("2006-01-02 15:04:05 -0700"), "", "Container: "+value(m.info.Format), "Duration: "+value(m.info.Duration), "Overall bitrate: "+value(m.info.Bitrate), "", "Video streams")
-		if len(m.info.Video) == 0 {
+		videoStreams := make([]mediainfo.Stream, 0, len(m.info.Video))
+		for _, s := range m.info.Video {
+			if !s.AttachedPicture {
+				videoStreams = append(videoStreams, s)
+			}
+		}
+		if len(videoStreams) == 0 {
 			content = append(content, "  None")
 		}
-		for _, s := range m.info.Video {
-			if s.AttachedPicture {
-				content = append(content, fmt.Sprintf("  Stream %d: Cover art (%s, %dx%d)", s.Index, s.Codec, s.Width, s.Height))
-				content = appendTags(content, s)
-				continue
-			}
+		for _, s := range videoStreams {
 			content = append(content, fmt.Sprintf("  Stream %d: %s, %s×%s, %s, %s", s.Index, s.Codec, positiveDim(s.Width), positiveDim(s.Height), s.Rate, s.Bitrate))
 			content = appendTags(content, s)
 		}
@@ -336,6 +337,13 @@ func (m Model) infoWrappedLines() []string {
 		for _, s := range m.info.Audio {
 			content = append(content, fmt.Sprintf("  Stream %d: %s, %s, %s channels, %s", s.Index, s.Codec, s.Rate, s.ChannelsText, s.Bitrate))
 			content = appendTags(content, s)
+		}
+		if len(m.info.CoverArt) > 0 {
+			content = append(content, "", "Cover art")
+			for _, s := range m.info.CoverArt {
+				content = append(content, fmt.Sprintf("  Stream %d: %s, %s×%s", s.Index, s.Codec, positiveDim(s.Width), positiveDim(s.Height)))
+				content = appendTags(content, s)
+			}
 		}
 		if m.info.Warning != "" {
 			content = append(content, "", "Inspection warning: "+safeText(m.info.Warning))
@@ -352,7 +360,7 @@ func (m Model) infoPanelHeight(contentLines int) int {
 	return min(m.height-2, max(8, min(contentLines+3, m.height-2)))
 }
 
-func (m Model) infoPageSize() int  { return max(1, m.infoPanelHeight(len(m.infoWrappedLines()))-3) }
+func (m Model) infoPageSize() int  { return max(1, m.infoPanelHeight(len(m.infoWrappedLines()))-2) }
 func (m Model) infoMaxOffset() int { return max(0, len(m.infoWrappedLines())-m.infoPageSize()) }
 func infoHint(width int) string {
 	if width < 50 {

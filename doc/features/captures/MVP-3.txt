@@ -40,9 +40,9 @@ MVPLAYER
 │                                      │
 │Container: matroska,webm              │
 │Duration: 00:02:34.567                │
-│                                      │
+│Overall bitrate: 1.2 Mbit/s           │
 └ Esc/i/Enter • ↑↓ ────────────────────┘
 ? help • i info • q quit • Tab • ↑↓ m...
 --- PASS: TestPrintCaptureTmp (0.00s)
 PASS
-ok  	mvplayer/internal/tui	0.010s
+ok  	mvplayer/internal/tui	0.006s

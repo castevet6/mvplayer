@@ -15,9 +15,8 @@ Inspecting one file currently requires leaving MVPLAYER. Let the user press
 position without starting playback or changing the queue.
 
 The user selected a dismissible overlay and requested media information beyond
-filesystem statistics, including duration, codecs, and resolution. This plan
-includes those choices and proposes the probing and failure behavior below.
-Implementation approval remains pending.
+filesystem statistics, including duration, codecs, and resolution. The user
+approved the resulting probing, fallback, and verification scope on 2026-10-18.
 
 ## Scope and boundaries
 
@@ -127,40 +126,39 @@ video/audio streams are included; no new Go dependency is proposed.
 
 ## Acceptance criteria
 
-- [ ] Browser `i` opens information for the exact selected media path in
+- [x] Browser `i` opens information for the exact selected media path in
   Directory and Recursive modes, including filtered results and duplicate names.
-- [ ] Filter editing treats `i` as text; help, Queue focus, directories, empty
+- [x] Filter editing treats `i` as text; help, Queue focus, directories, empty
   results, and pending directory scans cannot trigger inspection.
-- [ ] Filesystem fields are accurate, including exact size, zero-byte files,
+- [x] Filesystem fields are accurate, including exact size, zero-byte files,
   timezone, and the selected path of a media-file symlink.
-- [ ] Duration, container, bitrate, and all video/audio stream details match probe
+- [x] Duration, container, bitrate, and all video/audio stream details match probe
   output; missing/invalid values are explicit and cover art is distinguished.
-- [ ] Missing ffprobe, corrupt media, timeout, malformed/oversized output, and
+- [x] Missing ffprobe, corrupt media, timeout, malformed/oversized output, and
   command failures preserve file details and show an actionable warning.
-- [ ] Inspection uses the selected file independently of playback, starts no
+- [x] Inspection uses the selected file independently of playback, starts no
   playback window, and does not access network resources. Probe cancellation,
   child cleanup, and bounded output/work are covered by automated checks.
-- [ ] Loading transitions to information or an error. Deleted files, broken
+- [x] Loading transitions to information or an error. Deleted files, broken
   links, metadata failures, and changed file types do not crash the application
   or overwrite browser/playback errors.
-- [ ] Delayed results after dismissal or reopening cannot display obsolete
+- [x] Delayed results after dismissal or reopening cannot display obsolete
   details. Quit and dismissal remain responsive while metadata is pending.
-- [ ] Dismissal preserves browsing context, selection, filter, focus, queue,
+- [x] Dismissal preserves browsing context, selection, filter, focus, queue,
   and playback; modal keys cannot accidentally play/enqueue or navigate files.
-- [ ] Playback events and natural queue advancement continue while inspecting.
-- [ ] Wide/narrow layouts, scrolling, resizing, long Unicode/control-character
+- [x] Playback events and natural queue advancement continue while inspecting.
+- [x] Wide/narrow layouts, scrolling, resizing, long Unicode/control-character
   paths, and monochrome output remain readable and fit the available frame.
-- [ ] In-app help and README document the shortcut, fields, dismissal, and
+- [x] In-app help and README document the shortcut, fields, dismissal, and
   modal key behavior.
-- [ ] Automated checks pass and representative terminal captures plus user
+- [x] Automated checks pass and representative terminal captures plus user
   interactive acceptance are recorded before status becomes `verified`.
 
 ## Questions and dependencies
 
-The user resolved presentation and information scope: use a dismissible overlay
-and include media details. No additional user preference blocks planning. The
-specific fields, 10-second limit, and graceful fallback above are proposed defaults
-for approval with the complete plan.
+The user approved a dismissible overlay, media details, a 10-second probe limit,
+and graceful fallback behavior. Later verification feedback refined the modal
+backdrop, size label, and scrolling behavior without changing the approved scope.
 
 `ffprobe` is the proposed runtime dependency for media details. Its machine-readable
 format/stream inspection avoids implementing media parsers in Go and separates
@@ -217,8 +215,7 @@ Design references checked on 2026-10-18:
   Go uses writable caches under `/tmp`. The workspace default Go cache is
   read-only here. An initial race run with that cache also reported
   `runtime/race: package testmain: cannot find package`; a fresh cache at
-  `/tmp/mvplayer-mvp3-race-cache` passed. No installed-media fixture or
-  interactive user acceptance has been performed; those checks remain pending.
+  `/tmp/mvplayer-mvp3-race-cache` passed at implementation completion.
 - 2026-10-18: User verification found that the modal lacked the browser/queue
   backdrop, its close/scroll guidance was detached from the border, and its
   height caused avoidable scrolling. The down-scroll offset also kept growing
@@ -226,7 +223,7 @@ Design references checked on 2026-10-18:
   terminal height, put controls in the bottom border, and clamp line/page scroll
   to the current content. Added a regression test that fails with the previous
   unbounded offset and passes with the clamp, plus a wide-frame backdrop check.
-  Follow-up user acceptance is pending. The full test, vet, race, build, and
+  The full test, vet, race, build, and
   whitespace checks passed again after the updates using writable caches under
   `/tmp`.
 - 2026-10-18: User retested and confirmed the operation looks good, the
@@ -238,9 +235,14 @@ Design references checked on 2026-10-18:
 - 2026-10-18: Capture review exposed a binary-size unit label off by one step
   and a truncated narrow border hint. Corrected both and added binary-unit
   regression coverage. Full automated checks passed again.
+- 2026-10-18: Claude PR review round 1 found bitrate precision loss, cover art
+  grouped with video streams, missing process-runner tests, duration rounding at
+  minute boundaries, an unused modal row, and stale approval text. Follow-up
+  fixes put cover art in its own section, preserve bitrate precision, normalize
+  duration rounding, use all panel rows, correct the feature record, and exercise
+  subprocess output caps, timeout, exit failure, cancellation, and reaping.
 - 2026-10-18: Corrected the seed's copied MVP-1 heading and expanded its intent
-  into this proposal. Planning edits remain local on `develop`; no implementation
-  approval, branch, commit, push, or PR is recorded.
+  into this proposal. Planning edits were first made locally on `develop`.
 - 2026-10-18: Recommended a dismissible modal and basic filesystem information;
   requested the user's presentation and metadata preferences.
 - 2026-10-18: User selected the dismissible overlay and requested duration,

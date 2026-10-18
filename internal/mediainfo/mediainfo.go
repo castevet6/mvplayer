@@ -2,7 +2,6 @@
 package mediainfo
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,7 +32,7 @@ type Info struct {
 	Size                      int64
 	Modified                  time.Time
 	Format, Duration, Bitrate string
-	Video, Audio              []Stream
+	Video, Audio, CoverArt    []Stream
 	Warning                   string
 }
 
@@ -41,6 +40,7 @@ type Runner func(context.Context, string, ...string) ([]byte, []byte, error)
 type Inspector struct {
 	LookPath func(string) (string, error)
 	Run      Runner
+	Timeout  time.Duration
 }
 
 func New() Inspector { return Inspector{LookPath: exec.LookPath, Run: defaultRun} }
@@ -85,12 +85,16 @@ func (i Inspector) Inspect(ctx context.Context, path string) (Info, error) {
 	if run == nil {
 		run = defaultRun
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeout := i.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out, diag, err := run(ctx, probe, "-v", "error", "-protocol_whitelist", "file,crypto,data", "-show_entries", "format=format_name,duration,bit_rate:stream=index,codec_type,codec_name,width,height,avg_frame_rate,sample_rate,channels,channel_layout,bit_rate:stream_disposition=attached_pic:stream_tags=language,title", "-of", "json", path)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			info.Warning = "ffprobe timed out after 10 seconds"
+			info.Warning = fmt.Sprintf("ffprobe timed out after %s", timeout)
 			return info, nil
 		}
 		info.Warning = "ffprobe: " + cleanDiagnostic(diag, err)
@@ -103,26 +107,30 @@ func (i Inspector) Inspect(ctx context.Context, path string) (Info, error) {
 	}
 	info.Format, info.Duration, info.Bitrate = parsed.Format, parsed.Duration, parsed.Bitrate
 	info.Video, info.Audio = parsed.Video, parsed.Audio
+	info.CoverArt = parsed.CoverArt
 	return info, nil
 }
 
 type limitedBuffer struct {
-	bytes.Buffer
+	data     []byte
 	limit    int
 	exceeded bool
 }
 
+func (b *limitedBuffer) Bytes() []byte { return b.data }
+
 func (b *limitedBuffer) Write(p []byte) (int, error) {
-	n := len(p)
-	if b.Len()+n > b.limit {
+	inputLen := len(p)
+	remaining := b.limit - len(b.data)
+	if len(p) > remaining {
 		b.exceeded = true
-		p = p[:max(0, b.limit-b.Len())]
+		p = p[:max(0, remaining)]
 	}
-	_, _ = b.Buffer.Write(p)
+	b.data = append(b.data, p...)
 	if b.exceeded && b.limit == maxStdout {
-		return n, errors.New("output limit exceeded")
+		return len(p), errors.New("output limit exceeded")
 	}
-	return n, nil
+	return inputLen, nil
 }
 func defaultRun(ctx context.Context, bin string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -136,7 +144,7 @@ func defaultRun(ctx context.Context, bin string, args ...string) ([]byte, []byte
 		return nil, diag.Bytes(), errors.New("stdout exceeded 1 MiB")
 	}
 	if diag.exceeded {
-		diag.Truncate(maxStderr)
+		diag.data = diag.data[:maxStderr]
 	}
 	return out.Bytes(), diag.Bytes(), err
 }
@@ -158,7 +166,7 @@ func cleanDiagnostic(diag []byte, err error) string {
 
 type parsed struct {
 	Format, Duration, Bitrate string
-	Video, Audio              []Stream
+	Video, Audio, CoverArt    []Stream
 }
 
 func Parse(data []byte) (parsed, error) {
@@ -190,7 +198,7 @@ func Parse(data []byte) (parsed, error) {
 	for _, s := range raw.Streams {
 		v := Stream{Index: s.Index, Type: s.Type, Codec: unknown(s.Codec), Bitrate: bitrate(s.Bitrate), Language: unknown(s.Tags["language"]), Title: unknown(s.Tags["title"]), AttachedPicture: s.Disposition["attached_pic"] == 1, Width: s.Width, Height: s.Height, Rate: rate(s.FPS), Layout: unknown(s.Layout)}
 		if v.AttachedPicture {
-			p.Video = append(p.Video, v)
+			p.CoverArt = append(p.CoverArt, v)
 			continue
 		}
 		if s.Type == "video" {
@@ -203,6 +211,7 @@ func Parse(data []byte) (parsed, error) {
 	}
 	sort.Slice(p.Video, func(i, j int) bool { return p.Video[i].Index < p.Video[j].Index })
 	sort.Slice(p.Audio, func(i, j int) bool { return p.Audio[i].Index < p.Audio[j].Index })
+	sort.Slice(p.CoverArt, func(i, j int) bool { return p.CoverArt[i].Index < p.CoverArt[j].Index })
 	return p, nil
 }
 func unknown(s string) string {
@@ -230,17 +239,23 @@ func bitrate(s string) string {
 		n /= 1000
 		i++
 	}
-	return fmt.Sprintf("%.0f %s", n, units[i])
+	return strconv.FormatFloat(n, 'f', -1, 64) + " " + units[i]
 }
 func duration(s string) string {
 	n, e := strconv.ParseFloat(s, 64)
 	if e != nil || n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
 		return "Unknown"
 	}
-	h := int64(n) / 3600
-	m := int64(n) % 3600 / 60
-	sec := n - float64(h*3600+m*60)
-	return fmt.Sprintf("%02d:%02d:%06.3f", h, m, sec)
+	maxMillis := int64(^uint64(0) >> 1)
+	if n >= float64(maxMillis)/1000 {
+		return "Unknown"
+	}
+	ms := int64(math.Round(n * 1000))
+	h := ms / 3_600_000
+	m := ms % 3_600_000 / 60_000
+	sec := ms % 60_000 / 1000
+	millis := ms % 1000
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, sec, millis)
 }
 func rate(s string) string {
 	parts := strings.Split(s, "/")

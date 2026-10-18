@@ -979,6 +979,17 @@ func TestHumanSizeUsesBinaryUnits(t *testing.T) {
 	}
 }
 
+func TestInfoModalKeepsCoverArtOutOfVideoStreams(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height, m.infoOpen, m.infoPath = 80, 24, true, "/media/song.mp3"
+	m.info = mediainfo.Info{Name: "song.mp3", Path: m.infoPath, Audio: []mediainfo.Stream{{Index: 0, Codec: "mp3", Rate: "44100 Hz", ChannelsText: "2 (stereo)", Bitrate: "320 kbit/s"}}, CoverArt: []mediainfo.Stream{{Index: 1, Codec: "mjpeg", AttachedPicture: true}}}
+	view := m.View().Content
+	videoAt, coverAt := strings.Index(view, "Video streams"), strings.Index(view, "Cover art")
+	if videoAt < 0 || coverAt < 0 || videoAt > coverAt || !strings.Contains(view[videoAt:coverAt], "None") || !strings.Contains(view, "Unknown×Unknown") || strings.Contains(view, "0x0") {
+		t.Fatalf("cover art presentation: %s", view)
+	}
+}
+
 func TestRecursiveToggleRetainsFilterAndSelection(t *testing.T) {
 	root := t.TempDir()
 	mediaPath := filepath.Join(root, "album", "live", "song.flac")
