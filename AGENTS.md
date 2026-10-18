@@ -56,6 +56,6 @@ Debian-specific dependencies or setup requirements.
 ## Pull requests and review
 
 For PR creation, review, or follow-up, follow `.agents/skills/github-pr/SKILL.md`.
-It defines GitHub access setup, publication authorization, review rounds, findings,
-and the handoff to the human merger. Feature approval gates in
-`doc/FEATURE-WORKFLOW.md` remain authoritative.
+It defines one-per-chat GitHub execution approval, publication authorization,
+review rounds, findings, and the handoff to the human merger. Feature approval
+gates in `doc/FEATURE-WORKFLOW.md` remain authoritative.

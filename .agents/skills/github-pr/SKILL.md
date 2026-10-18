@@ -12,11 +12,21 @@ in this skill rather than duplicating them there.
 
 ## Access and authorization
 
-Before GitHub work, establish a network-capable execution path. If sandboxed
-GitHub access fails, retry the needed command with escalation before diagnosing
-credentials. Check `gh auth status` only in a network-capable context. Reuse
-session authorization and batch read-only requests where possible. Keep tokens
-and keys out of output and comments.
+At the first GitHub task in each Codex chat, check whether network-capable
+`gh` execution is already available. If it is, use it without another prompt.
+If it is not, request the needed execution approval once, choosing the
+current-chat/session scope when the host offers that choice. After approval,
+reuse that access for authorized `gh` work throughout this chat; do not ask
+again for each ordinary PR command. If the host only offers command-scoped
+approval, request the narrowest available GitHub CLI access and reuse whatever
+authorization the host grants. Repository instructions cannot grant sandbox
+access or GitHub permissions.
+
+Once execution is network-capable, check `gh auth status` before diagnosing
+credentials. Execution approval only allows the command to run; it does not
+authenticate `gh`, expand token scopes, or authorize GitHub actions beyond the
+user's task and the PR workflow below. Keep tokens and keys out of output and
+comments.
 
 Opening or updating a PR authorizes the review workflow and in-scope fixes,
 checks, commits, pushes, and replies. Renew scope approval for material behavior
