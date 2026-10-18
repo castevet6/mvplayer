@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"mvplayer/internal/browser"
+	"mvplayer/internal/mediainfo"
 	"mvplayer/internal/playback"
 
 	tea "charm.land/bubbletea/v2"
@@ -31,6 +32,11 @@ type loadResult struct {
 }
 type playerStateMsg playback.State
 type controlResult struct{ err error }
+type inspectResult struct {
+	request uint64
+	info    mediainfo.Info
+	err     error
+}
 
 // FileSelectedMsg is emitted when the user presses Enter on a media file.
 type FileSelectedMsg struct{ Path string }
@@ -65,6 +71,16 @@ type Model struct {
 	queueOffset      int
 	help             bool
 	helpOffset       int
+	infoOpen         bool
+	infoLoading      bool
+	infoPath         string
+	info             mediainfo.Info
+	infoErr          error
+	infoOffset       int
+	infoRequest      uint64
+	infoCancel       context.CancelFunc
+	infoContext      context.Context
+	inspector        mediainfo.Inspector
 	selected         string
 	pending          string
 	request          uint64
@@ -120,7 +136,7 @@ func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error))
 	noColorValue, noColorSet := os.LookupEnv("NO_COLOR")
 	noColor := noColorSet && noColorValue != ""
 	scanContext, scanCancel := context.WithCancel(context.Background())
-	return Model{browseDir: browseDir, list: list, listRecursive: browser.ListRecursive, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor, scanContext: scanContext, scanCancel: scanCancel, loading: true}
+	return Model{browseDir: browseDir, list: list, listRecursive: browser.ListRecursive, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor, scanContext: scanContext, scanCancel: scanCancel, loading: true, inspector: mediainfo.New()}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -188,6 +204,37 @@ func (m Model) loadDirectory() tea.Cmd {
 	}
 }
 
+func (m *Model) openInfo(path string) {
+	if m.infoCancel != nil {
+		m.infoCancel()
+	}
+	base := m.appContext
+	if base == nil {
+		base = context.Background()
+	}
+	ctx, cancel := context.WithCancel(base)
+	m.infoCancel = cancel
+	m.infoContext = ctx
+	m.infoRequest++
+	m.infoPath = path
+	m.infoOpen = true
+	m.infoLoading = true
+	m.infoOffset = 0
+	m.infoErr = nil
+	m.info = mediainfo.Info{}
+}
+
+func (m Model) inspectInfo() tea.Cmd {
+	request, path, inspector, ctx := m.infoRequest, m.infoPath, m.inspector, m.infoContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return func() tea.Msg {
+		info, err := inspector.Inspect(ctx, path)
+		return inspectResult{request: request, info: info, err: err}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case directoryResult:
@@ -209,6 +256,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 && msg.Height > 0 {
 			m.width, m.height = msg.Width, msg.Height
+			if m.infoOpen {
+				m.infoOffset = min(m.infoOffset, m.infoMaxOffset())
+			}
 			m.keepVisible()
 		}
 		return m, nil
@@ -287,6 +337,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.playbackErr = msg.err
 		}
 		return m, nil
+	case inspectResult:
+		if !m.infoOpen || msg.request != m.infoRequest {
+			return m, nil
+		}
+		m.infoLoading, m.infoErr, m.info = false, msg.err, msg.info
+		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
@@ -298,8 +354,39 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.scanCancel != nil {
 			m.scanCancel()
 		}
+		if m.infoCancel != nil {
+			m.infoCancel()
+		}
 		m.quitting = true
 		return m, tea.Quit
+	}
+	if m.infoOpen {
+		switch key.String() {
+		case "esc", "i", "enter":
+			m.infoOpen = false
+			if m.infoCancel != nil {
+				m.infoCancel()
+				m.infoCancel = nil
+			}
+		case "up", "k":
+			m.infoOffset = max(0, m.infoOffset-1)
+		case "down", "j":
+			m.infoOffset = min(m.infoMaxOffset(), m.infoOffset+1)
+		case "pgup":
+			m.infoOffset = max(0, m.infoOffset-m.infoPageSize())
+		case "pgdown":
+			m.infoOffset = min(m.infoMaxOffset(), m.infoOffset+max(1, m.infoPageSize()))
+		case "q":
+			if m.scanCancel != nil {
+				m.scanCancel()
+			}
+			if m.infoCancel != nil {
+				m.infoCancel()
+			}
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
 	}
 	if m.help {
 		switch key.String() {
@@ -366,6 +453,10 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.String() == "?" {
 		m.help, m.helpOffset = true, 0
 		return m, nil
+	}
+	if key.String() == "i" && m.focus == browserPane && !m.loading && m.cursor >= 0 && m.cursor < len(m.visible) && m.visible[m.cursor].Media {
+		m.openInfo(m.visible[m.cursor].Path)
+		return m, m.inspectInfo()
 	}
 	if m.playing != "" && m.player != nil && !m.status.Ended {
 		switch key.String() {

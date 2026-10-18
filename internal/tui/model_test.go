@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"mvplayer/internal/browser"
+	"mvplayer/internal/mediainfo"
 	"mvplayer/internal/playback"
 )
 
@@ -854,6 +855,138 @@ func TestDirectoryResultsIgnoreStaleRequests(t *testing.T) {
 	updated, _ = m.Update(current)
 	if got := updated.(Model).visible; len(got) != 1 || got[0].Name != "new.mp4" {
 		t.Fatalf("current response not applied: %#v", got)
+	}
+}
+
+func TestInfoModalPreservesBrowserAndRejectsStaleResults(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "same name.mp4")
+	if err := os.WriteFile(path, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	player := &fakePlayer{}
+	m := New(root, "", player)
+	m.loading = false
+	m.focus = browserPane
+	m.recursive = true
+	m.query = "same"
+	m.cursor = 0
+	m.browserOffset = 3
+	m.queue = []string{"/queued.mp3"}
+	m.queueCursor = 0
+	m.playing = "/playing.mp4"
+	m.visible = []browser.Entry{{Name: "same name.mp4", Path: path, Media: true}}
+	m.inspector = mediainfo.Inspector{LookPath: func(string) (string, error) { return "/ffprobe", nil }, Run: func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte(`{"format":{"format_name":"mp4","duration":"2"},"streams":[]}`), nil, nil
+	}}
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'i', Text: "i"}))
+	m = updated.(Model)
+	if !m.infoOpen || !m.infoLoading || cmd == nil || m.infoPath != path {
+		t.Fatalf("modal did not open: %#v", m)
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+	if m.infoLoading || m.info.Format != "mp4" || m.playing != "/playing.mp4" || len(player.paths) != 0 {
+		t.Fatalf("inspection affected playback or failed: modal=%#v paths=%v", m, player.paths)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'j', Text: "j"}))
+	m = updated.(Model)
+	if !m.infoOpen || m.focus != browserPane || m.cursor != 0 || m.browserOffset != 3 || m.query != "same" || !m.recursive || m.queue[0] != "/queued.mp3" {
+		t.Fatalf("modal changed browsing context: %#v", m)
+	}
+	old := inspectResult{request: m.infoRequest, info: mediainfo.Info{Format: "old"}}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	m = updated.(Model)
+	if m.infoOpen {
+		t.Fatal("Escape did not dismiss modal")
+	}
+	m.openInfo(filepath.Join(root, "new.mp4"))
+	updated, _ = m.Update(old)
+	m = updated.(Model)
+	if m.info.Format == "old" {
+		t.Fatal("late result from previous modal request was applied")
+	}
+}
+
+func TestInfoShortcutUnavailableDuringScanAndFilter(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.visible = []browser.Entry{{Name: "a.mp4", Path: "/media/a.mp4", Media: true}}
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'i', Text: "i"}))
+	m = updated.(Model)
+	if m.infoOpen {
+		t.Fatal("inspection opened while browser was loading")
+	}
+	m.loading = false
+	m.filtering = true
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'i', Text: "i"}))
+	m = updated.(Model)
+	if m.infoOpen || m.query != "i" {
+		t.Fatalf("filter did not accept i: open=%t query=%q", m.infoOpen, m.query)
+	}
+}
+
+func TestInfoModalFitsSupportedTerminalSizes(t *testing.T) {
+	for _, size := range []tea.WindowSizeMsg{{Width: 120, Height: 30}, {Width: 100, Height: 24}, {Width: 80, Height: 24}, {Width: 40, Height: 12}, {Width: 24, Height: 10}} {
+		m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+		m.width, m.height, m.infoOpen, m.infoPath = size.Width, size.Height, true, "/media/長い名前-clip.mp4"
+		m.info = mediainfo.Info{Path: m.infoPath, Name: "長い名前-clip.mp4", Size: 1234567, Modified: time.Now(), Format: "matroska,webm", Duration: "01:02:03.456", Bitrate: "2 Mbit/s", Warning: strings.Repeat("probe warning ", 12)}
+		m.info.Video = []mediainfo.Stream{{Index: 0, Codec: "h264", Width: 1920, Height: 1080, Rate: "29.970 fps average", Bitrate: "1 Mbit/s", Language: "eng", Title: "main"}}
+		view := strings.Split(m.View().Content, "\n")
+		if len(view) > size.Height {
+			t.Fatalf("%dx%d modal has %d rows", size.Width, size.Height, len(view))
+		}
+		for i, line := range view {
+			if width := ansi.StringWidth(line); width > size.Width {
+				t.Fatalf("%dx%d line %d has width %d: %q", size.Width, size.Height, i, width, line)
+			}
+		}
+		if size.Width == 120 && (!strings.Contains(view[1], "Browser") || !strings.Contains(view[1], "Queue")) {
+			t.Fatalf("wide modal did not leave the browser and queue panes behind it: %q", view[1])
+		}
+		if size.Width == 24 && !strings.Contains(strings.Join(view, "\n"), "┘") {
+			t.Fatal("narrow modal truncated its border hint")
+		}
+	}
+}
+
+func TestInfoModalDoesNotBufferDownScrollPastEnd(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height, m.infoOpen, m.infoPath = 80, 24, true, "/media/clip.mp4"
+	m.info = mediainfo.Info{Name: "clip.mp4", Path: m.infoPath, Format: "mp4", Duration: "00:00:10.000", Bitrate: "Unknown", Modified: time.Now()}
+	for i := 0; i < 20; i++ {
+		m.info.Audio = append(m.info.Audio, mediainfo.Stream{Index: i, Codec: "aac", Rate: "48000 Hz", ChannelsText: "2 (stereo)", Bitrate: "128 kbit/s", Language: "eng", Title: fmt.Sprintf("track %02d", i)})
+	}
+	for range 100 {
+		updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+		m = updated.(Model)
+	}
+	atBottom := m.View().Content
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+	m = updated.(Model)
+	if got := m.View().Content; got == atBottom {
+		t.Fatalf("one Up press was absorbed at end: offset=%d max=%d\n%s", m.infoOffset, m.infoMaxOffset(), got)
+	}
+}
+
+func TestHumanSizeUsesBinaryUnits(t *testing.T) {
+	for _, tc := range []struct {
+		size int64
+		want string
+	}{{0, "0 B"}, {1023, "1023 B"}, {1024, "1.00 KiB"}, {7340032, "7.00 MiB"}, {1073741824, "1.00 GiB"}} {
+		if got := humanSize(tc.size); got != tc.want {
+			t.Errorf("humanSize(%d)=%q, want %q", tc.size, got, tc.want)
+		}
+	}
+}
+
+func TestInfoModalKeepsCoverArtOutOfVideoStreams(t *testing.T) {
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width, m.height, m.infoOpen, m.infoPath = 80, 24, true, "/media/song.mp3"
+	m.info = mediainfo.Info{Name: "song.mp3", Path: m.infoPath, Audio: []mediainfo.Stream{{Index: 0, Codec: "mp3", Rate: "44100 Hz", ChannelsText: "2 (stereo)", Bitrate: "320 kbit/s"}}, CoverArt: []mediainfo.Stream{{Index: 1, Codec: "mjpeg", AttachedPicture: true}}}
+	view := m.View().Content
+	videoAt, coverAt := strings.Index(view, "Video streams"), strings.Index(view, "Cover art")
+	if videoAt < 0 || coverAt < 0 || videoAt > coverAt || !strings.Contains(view[videoAt:coverAt], "None") || !strings.Contains(view, "Unknown×Unknown") || strings.Contains(view, "0x0") {
+		t.Fatalf("cover art presentation: %s", view)
 	}
 }
 

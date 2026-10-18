@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"mvplayer/internal/mediainfo"
 )
 
 func (m Model) View() tea.View {
@@ -22,6 +23,8 @@ func (m Model) View() tea.View {
 		lines = []string{fmt.Sprintf("MVPLAYER: terminal too small (%d x %d)", m.width, m.height), "Resize to at least 24 x 10 to continue.", "q quit  •  Ctrl+C quit"}
 	} else if m.help {
 		lines = m.helpView()
+	} else if m.infoOpen {
+		lines = m.infoView()
 	} else {
 		lines = m.mainView()
 	}
@@ -266,13 +269,155 @@ func (m Model) hints() string {
 		return "Ctrl+C quit • Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch"
 	}
 	if m.focus == browserPane {
-		return "? help • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter"
+		return "? help • i info • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter"
 	}
 	return "Tab switch • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
 }
 
+func (m Model) infoView() []string {
+	panelWidth := min(m.width, 84)
+	left := (m.width - panelWidth) / 2
+	wrapped := m.infoWrappedLines()
+	panelHeight := m.infoPanelHeight(len(wrapped))
+	page := m.infoPageSize()
+	offset := min(m.infoOffset, max(0, len(wrapped)-page))
+	end := min(len(wrapped), offset+page)
+	top := max(0, (m.height-panelHeight)/2)
+	background := m.mainView()
+	for len(background) < m.height {
+		background = append(background, "")
+	}
+	background = background[:m.height]
+	panel := []string{}
+	title := " File information "
+	topBorder := "┌" + title + strings.Repeat("─", max(0, panelWidth-ansi.StringWidth(title)-2)) + "┐"
+	panel = append(panel, fit(topBorder, panelWidth))
+	for _, line := range wrapped[offset:end] {
+		panel = append(panel, "│"+fit(line, panelWidth-2)+"│")
+	}
+	for len(panel) < panelHeight-1 {
+		panel = append(panel, "│"+fit("", panelWidth-2)+"│")
+	}
+	hint := infoHint(panelWidth)
+	bottom := "└ " + hint + " " + strings.Repeat("─", max(0, panelWidth-ansi.StringWidth(hint)-4)) + "┘"
+	panel = append(panel, fit(bottom, panelWidth))
+	for i, line := range panel {
+		if y := top + i; y >= 0 && y < m.height {
+			background[y] = overlayLine(background[y], line, left, panelWidth, m.width)
+		}
+	}
+	return background
+}
+
+func (m Model) infoWrappedLines() []string {
+	content := []string{"Name: " + safeText(filepath.Base(m.infoPath)), "Path: " + safeText(m.infoPath)}
+	if m.infoLoading {
+		content = append(content, "", "Loading file and media information…")
+	} else if m.infoErr != nil {
+		content = append(content, "", "File error: "+safeText(m.infoErr.Error()))
+	} else {
+		content = append(content, fmt.Sprintf("Size: %s (%d bytes)", humanSize(m.info.Size), m.info.Size), "Modified: "+m.info.Modified.Format("2006-01-02 15:04:05 -0700"), "", "Container: "+value(m.info.Format), "Duration: "+value(m.info.Duration), "Overall bitrate: "+value(m.info.Bitrate), "", "Video streams")
+		videoStreams := make([]mediainfo.Stream, 0, len(m.info.Video))
+		for _, s := range m.info.Video {
+			if !s.AttachedPicture {
+				videoStreams = append(videoStreams, s)
+			}
+		}
+		if len(videoStreams) == 0 {
+			content = append(content, "  None")
+		}
+		for _, s := range videoStreams {
+			content = append(content, fmt.Sprintf("  Stream %d: %s, %s×%s, %s, %s", s.Index, s.Codec, positiveDim(s.Width), positiveDim(s.Height), s.Rate, s.Bitrate))
+			content = appendTags(content, s)
+		}
+		content = append(content, "", "Audio streams")
+		if len(m.info.Audio) == 0 {
+			content = append(content, "  None")
+		}
+		for _, s := range m.info.Audio {
+			content = append(content, fmt.Sprintf("  Stream %d: %s, %s, %s channels, %s", s.Index, s.Codec, s.Rate, s.ChannelsText, s.Bitrate))
+			content = appendTags(content, s)
+		}
+		if len(m.info.CoverArt) > 0 {
+			content = append(content, "", "Cover art")
+			for _, s := range m.info.CoverArt {
+				content = append(content, fmt.Sprintf("  Stream %d: %s, %s×%s", s.Index, s.Codec, positiveDim(s.Width), positiveDim(s.Height)))
+				content = appendTags(content, s)
+			}
+		}
+		if m.info.Warning != "" {
+			content = append(content, "", "Inspection warning: "+safeText(m.info.Warning))
+		}
+	}
+	var wrapped []string
+	for _, line := range content {
+		wrapped = append(wrapped, strings.Split(ansi.Wrap(safeText(line), max(1, min(m.width, 84)-4), ""), "\n")...)
+	}
+	return wrapped
+}
+
+func (m Model) infoPanelHeight(contentLines int) int {
+	return min(m.height-2, max(8, min(contentLines+3, m.height-2)))
+}
+
+func (m Model) infoPageSize() int  { return max(1, m.infoPanelHeight(len(m.infoWrappedLines()))-2) }
+func (m Model) infoMaxOffset() int { return max(0, len(m.infoWrappedLines())-m.infoPageSize()) }
+func infoHint(width int) string {
+	if width < 50 {
+		return "Esc/i/Enter • ↑↓"
+	}
+	return "Esc/i/Enter close • ↑↓/j/k scroll • PgUp/PgDn page"
+}
+
+func overlayLine(background, panel string, left, panelWidth, width int) string {
+	background = fit(background, width)
+	if left <= 0 && panelWidth >= width {
+		return panel
+	}
+	before := ansi.Cut(background, 0, left)
+	after := ansi.Cut(background, left+panelWidth, width)
+	return before + panel + after
+}
+func value(s string) string {
+	if s == "" {
+		return "Unknown"
+	}
+	return safeText(s)
+}
+func positiveDim(n int) string {
+	if n <= 0 {
+		return "Unknown"
+	}
+	return fmt.Sprint(n)
+}
+func humanSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	v := float64(n)
+	u := []string{"KiB", "MiB", "GiB", "TiB"}
+	i := 0
+	for v >= 1024 && i < len(u)-1 {
+		v /= 1024
+		i++
+	}
+	if i > 0 {
+		i--
+	}
+	return fmt.Sprintf("%.2f %s", v, u[i])
+}
+func appendTags(lines []string, s mediainfo.Stream) []string {
+	if s.Language != "Unknown" {
+		lines = append(lines, "    Language: "+safeText(s.Language))
+	}
+	if s.Title != "Unknown" {
+		lines = append(lines, "    Title: "+safeText(s.Title))
+	}
+	return lines
+}
+
 func (m Model) helpView() []string {
-	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  Backspace           Open parent directory (browser focus)", "  r                   Toggle recursive browsing (browser focus)", "  /                   Filter displayed names or relative paths", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
+	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  i                   Inspect selected browser media; Esc/i/Enter closes", "  Modal               Up/Down or j/k scroll; PgUp/PgDn page; other keys are ignored", "  Backspace           Open parent directory (browser focus)", "  r                   Toggle recursive browsing (browser focus)", "  /                   Filter displayed names or relative paths", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
 	if m.err != nil {
 		content = append(content, "", "Browser error: "+m.err.Error())
 	}
