@@ -41,6 +41,23 @@ sudo apt install mpv
 Install Go 1.26 or newer separately if the Go version provided by your Debian
 release is older. The program does not bundle mpv or media codecs.
 
+## Development and contribution tools
+
+Building and testing the Go application requires Go 1.26 or newer. Git is used
+for version information and branch work; GNU Make is used by the documented
+`make` shortcuts. The project scripts use Bash.
+
+The pull request helpers require the GitHub CLI (`gh`) and `jq`. Authenticate
+`gh` with access to this repository before listing, creating, or updating pull
+requests. Running the full Claude review with `scripts/review-pr.sh` also
+requires the Claude Code CLI (`claude`), `curl`, OpenSSL (`openssl`), `flock`
+(from util-linux), `realpath`, `awk`, and `grep`, along with standard GNU
+utilities. Publishing a Claude review additionally requires the maintainer's
+reviewer app configuration and key.
+
+Run `make test-pr-workflow` to check the PR helper scripts and their mocked
+GitHub API behavior. It requires Bash and `jq`.
+
 ## Build and run
 
 From the project root:
