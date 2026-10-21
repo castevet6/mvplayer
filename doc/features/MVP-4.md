@@ -1,6 +1,6 @@
 # MVP-4: Hide folders from recursive view
 
-- Status: implemented
+- Status: verified
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-21
 - Branch: feature/mvp-4-hide-folders-in-recursive-view
@@ -82,11 +82,11 @@ directory-symlink traversal rules remain in force.
 - [x] Toggling does not rescan, alter scan identity, or cancel a pending scan.
   An accepted result uses the latest visibility choice; obsolete results remain
   rejected. Loading, error, and partial-warning states remain accurate.
-- [ ] Wide/narrow layouts, resizing, scrolling, long and Unicode paths, and
+- [x] Wide/narrow layouts, resizing, scrolling, long and Unicode paths, and
   `NO_COLOR` output show usable state and stay within terminal bounds.
 - [x] File actions target the correct absolute paths. Visibility changes leave
   current playback and queued entries intact.
-- [ ] Required checks pass and representative terminal captures and user
+- [x] Required checks pass and representative terminal captures and user
   interactive acceptance are recorded before marking the feature verified.
 
 ## Questions and dependencies
@@ -148,6 +148,8 @@ directory-symlink traversal rules remain in force.
   restore them. Filtering now allocates an independent visible slice, and hidden
   recursive media render by basename while shown folders retain relative paths.
   Added regression assertions for both toggle directions and display text.
+- 2026-10-21: User confirmed the corrected implementation works interactively
+  and approved moving forward with PR publication. Status changed to `verified`.
 
 ## Verification instructions
 
@@ -199,6 +201,9 @@ Implementation verification on 2026-10-21:
 
 The folder-toggle regression fix was rechecked with `GOCACHE=/tmp/mvplayer-gocache
 go test -race ./...` — passed.
+
+User verification on 2026-10-21: confirmed recursive folder hiding, basename
+rendering while hidden, and restoring folders with a second `v` work correctly.
 
 Automated coverage exercises both toggle directions, key-context restrictions,
 selection fallback, preserved relative media paths, and rendered visibility
