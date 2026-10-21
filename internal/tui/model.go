@@ -56,7 +56,6 @@ type Model struct {
 	browseDir        string
 	entries          []browser.Entry
 	visible          []browser.Entry
-	hiddenNameCounts map[string]int
 	cursor           int
 	query            string
 	filtering        bool
@@ -665,12 +664,6 @@ func (m *Model) applyFilter() {
 		filtered = visible
 	}
 	m.visible = filtered
-	m.hiddenNameCounts = make(map[string]int)
-	for _, entry := range m.visible {
-		if !entry.Dir {
-			m.hiddenNameCounts[filepath.Base(entry.Name)]++
-		}
-	}
 	if selected != "" {
 		found := false
 		for i := range m.visible {

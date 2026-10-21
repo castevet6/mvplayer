@@ -1045,7 +1045,7 @@ func TestRecursiveFolderVisibilityTogglePreservesMediaAndSelection(t *testing.T)
 	if cmd != nil || m.foldersVisible || len(m.visible) != 1 || m.visible[0].Path != media || m.cursor != 0 {
 		t.Fatalf("hide folders: cmd=%v visible=%#v cursor=%d state=%t", cmd != nil, m.visible, m.cursor, m.foldersVisible)
 	}
-	if got := m.View().Content; !strings.Contains(got, "Folders hidden") || !strings.Contains(got, "song.mp3") || strings.Contains(got, "album/song.mp3") {
+	if got := m.View().Content; !strings.Contains(got, "Folders hidden") || !strings.Contains(got, "album/song.mp3") {
 		t.Fatalf("hidden-folder view missing state or media: %q", got)
 	}
 	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
@@ -1055,6 +1055,23 @@ func TestRecursiveFolderVisibilityTogglePreservesMediaAndSelection(t *testing.T)
 	}
 	if got := m.View().Content; !strings.Contains(got, "album/") || !strings.Contains(got, "album/song.mp3") {
 		t.Fatalf("folder restoration or hidden basename rendering incorrect: %q", got)
+	}
+}
+
+func TestRecursiveMediaFolderPrefixUsesMutedColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	m := NewWithLister("/media", func(string) ([]browser.Entry, error) { return nil, nil })
+	m.width = 100
+	m.recursive = true
+	m.foldersVisible = false
+	m.colorProfile = colorprofile.ANSI
+	m.visible = []browser.Entry{{Name: "album/song.mp3", Path: "/media/album/song.mp3", RelativePath: "album/song.mp3", Media: true}}
+	if got := m.recursiveMediaName(m.visible[0]); !strings.Contains(got, "\x1b[2;37m") {
+		t.Fatalf("direct recursive name missing prefix style: %q", got)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "\x1b[2;37malbum/\x1b[0msong.mp3") {
+		t.Fatalf("recursive folder prefix was not muted: %q", view)
 	}
 }
 

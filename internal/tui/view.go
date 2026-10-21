@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"mvplayer/internal/browser"
 	"mvplayer/internal/mediainfo"
 )
 
@@ -120,12 +121,8 @@ func (m Model) browserRows(offset, count, width int) []string {
 			mark = "> "
 		}
 		name := safeText(m.visible[i].Name)
-		if m.visible[i].RelativePath != "" && !m.visible[i].Dir {
-			if m.foldersVisible || m.hiddenNameCounts[filepath.Base(m.visible[i].Name)] > 1 {
-				name = safeText(m.visible[i].RelativePath)
-			} else {
-				name = safeText(filepath.Base(m.visible[i].RelativePath))
-			}
+		if m.recursive && m.visible[i].RelativePath != "" && !m.visible[i].Dir {
+			name = m.recursiveMediaName(m.visible[i])
 		}
 		if m.visible[i].Dir {
 			name += "/"
@@ -146,6 +143,27 @@ func (m Model) browserRows(offset, count, width int) []string {
 		}
 	}
 	return rows
+}
+
+func (m Model) recursiveMediaName(entry browser.Entry) string {
+	relative := safeText(entry.RelativePath)
+	separator := strings.LastIndexAny(relative, `/\\`)
+	if separator < 0 {
+		return relative
+	}
+	prefix := relative[:separator+1]
+	base := relative[separator+1:]
+	return m.styleFolderPrefix(prefix) + base
+}
+
+func (m Model) styleFolderPrefix(prefix string) string {
+	if m.colorProfile == colorprofile.Unknown || m.colorProfile == colorprofile.NoTTY || m.noColor || m.colorProfile == colorprofile.ASCII {
+		return prefix
+	}
+	if m.colorProfile >= colorprofile.ANSI {
+		return "\x1b[2;37m" + prefix + "\x1b[0m"
+	}
+	return prefix
 }
 
 func (m Model) queueRows(offset, count, width int) []string {
