@@ -1084,6 +1084,34 @@ func TestRecursiveFolderVisibilityKeyContexts(t *testing.T) {
 	}
 }
 
+func TestHiddenRecursiveRowsKeepScanEntriesAndFolderQueries(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "one", "song.mp3")
+	second := filepath.Join(root, "two", "song.mp3")
+	m := NewWithLister(root, browser.List)
+	m.recursive = true
+	m.foldersVisible = false
+	m.entries = []browser.Entry{
+		{Name: "one", Path: filepath.Join(root, "one"), RelativePath: "one", Dir: true},
+		{Name: "two", Path: filepath.Join(root, "two"), RelativePath: "two", Dir: true},
+		{Name: "one/song.mp3", Path: first, RelativePath: "one/song.mp3", Media: true},
+		{Name: "two/song.mp3", Path: second, RelativePath: "two/song.mp3", Media: true},
+	}
+	m.applyFilter()
+	if len(m.visible) != 2 || m.visible[0].Dir || m.visible[1].Dir {
+		t.Fatalf("hidden rows lost media or retained folders: %#v", m.visible)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "one/song.mp3") || !strings.Contains(view, "two/song.mp3") {
+		t.Fatalf("duplicate basenames are not distinguishable: %q", view)
+	}
+	m.query = "one"
+	m.applyFilter()
+	if len(m.visible) != 1 || m.visible[0].Path != first {
+		t.Fatalf("folder query did not retain descendant media: %#v", m.visible)
+	}
+}
+
 func TestDirectoryResultKeepsRestoredSelectionVisible(t *testing.T) {
 	root := t.TempDir()
 	m := NewWithLister(root, func(string) ([]browser.Entry, error) { return nil, nil })

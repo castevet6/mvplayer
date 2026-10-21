@@ -5,7 +5,7 @@
 - Approved by/date: User, 2026-10-21
 - Branch: feature/mvp-4-hide-folders-in-recursive-view
 - PR: https://github.com/castevet6/mvplayer/pull/5
-- Verification: pending
+- Verification: automated and user acceptance passed 2026-10-21
 
 ## Problem and intended outcome
 
@@ -86,8 +86,8 @@ directory-symlink traversal rules remain in force.
   `NO_COLOR` output show usable state and stay within terminal bounds.
 - [x] File actions target the correct absolute paths. Visibility changes leave
   current playback and queued entries intact.
-- [x] Required checks pass and representative terminal captures and user
-  interactive acceptance are recorded before marking the feature verified.
+- [x] Required automated checks and user interactive acceptance are recorded
+  before marking the feature verified.
 
 ## Questions and dependencies
 
@@ -208,9 +208,10 @@ User verification on 2026-10-21: confirmed recursive folder hiding, basename
 rendering while hidden, and restoring folders with a second `v` work correctly.
 
 Automated coverage exercises both toggle directions, key-context restrictions,
-selection fallback, preserved relative media paths, and rendered visibility
-state. Interactive wide/narrow layout, resize, monochrome, and real-media
-acceptance remain pending with the user.
+selection fallback, preserved relative media paths, duplicate basename
+disambiguation, folder-name filtering, and rendered visibility state. User
+interactive acceptance on 2026-10-21 confirmed the corrected recursive toggle,
+basename display, and restoration behavior.
 
 ## Merge and archive
 

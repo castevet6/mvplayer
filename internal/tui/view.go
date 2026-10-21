@@ -47,10 +47,11 @@ func (m Model) mainView() []string {
 		left := (m.width - 3) / 2
 		right := m.width - 3 - left
 		lines = append(lines, m.widePaneTitle("Browser", browserPane, m.cursor, len(m.visible), left)+" | "+m.widePaneTitle("Queue", queuePane, m.queueCursor, len(m.queue), right))
-		browserContext := safeText(m.browseDir) + "  " + m.browserModeLabel()
+		browserContext := m.browserModeLabel()
 		if m.recursive {
 			browserContext += "  " + m.folderVisibilityLabel()
 		}
+		browserContext += "  " + safeText(m.browseDir)
 		if m.loading {
 			browserContext += "  Scanning..."
 		}
@@ -79,10 +80,11 @@ func (m Model) mainView() []string {
 			header += "  Tab switch"
 		}
 		lines = append(lines, header)
-		position, context := "0/0", safeText(m.browseDir)+"  "+m.browserModeLabel()
+		position, context := "0/0", m.browserModeLabel()
 		if m.recursive {
 			context += "  " + m.folderVisibilityLabel()
 		}
+		context += "  " + safeText(m.browseDir)
 		if m.loading {
 			context += "  Scanning..."
 		}
@@ -118,8 +120,12 @@ func (m Model) browserRows(offset, count, width int) []string {
 			mark = "> "
 		}
 		name := safeText(m.visible[i].Name)
-		if m.visible[i].RelativePath != "" && !m.visible[i].Dir && m.foldersVisible {
-			name = safeText(m.visible[i].RelativePath)
+		if m.visible[i].RelativePath != "" && !m.visible[i].Dir {
+			if m.foldersVisible || m.duplicateMediaName(i) {
+				name = safeText(m.visible[i].RelativePath)
+			} else {
+				name = safeText(filepath.Base(m.visible[i].RelativePath))
+			}
 		}
 		if m.visible[i].Dir {
 			name += "/"
@@ -140,6 +146,19 @@ func (m Model) browserRows(offset, count, width int) []string {
 		}
 	}
 	return rows
+}
+
+func (m Model) duplicateMediaName(index int) bool {
+	if index < 0 || index >= len(m.visible) || m.visible[index].Dir {
+		return false
+	}
+	name := filepath.Base(m.visible[index].Name)
+	for i, entry := range m.visible {
+		if i != index && !entry.Dir && filepath.Base(entry.Name) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Model) queueRows(offset, count, width int) []string {
