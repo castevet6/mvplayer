@@ -1066,11 +1066,11 @@ func TestRecursiveMediaFolderPrefixUsesMutedColor(t *testing.T) {
 	m.foldersVisible = false
 	m.colorProfile = colorprofile.ANSI
 	m.visible = []browser.Entry{{Name: "album/song.mp3", Path: "/media/album/song.mp3", RelativePath: "album/song.mp3", Media: true}}
-	if got := m.recursiveMediaName(m.visible[0]); !strings.Contains(got, "\x1b[2;37m") {
+	if got := m.recursiveMediaName(m.visible[0]); !strings.Contains(got, "\x1b[90m") {
 		t.Fatalf("direct recursive name missing prefix style: %q", got)
 	}
 	view := m.View().Content
-	if !strings.Contains(view, "\x1b[2;37malbum/\x1b[0msong.mp3") {
+	if !strings.Contains(view, "\x1b[90malbum/\x1b[0msong.mp3") {
 		t.Fatalf("recursive folder prefix was not muted: %q", view)
 	}
 }

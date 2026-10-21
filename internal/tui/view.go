@@ -161,7 +161,7 @@ func (m Model) styleFolderPrefix(prefix string) string {
 		return prefix
 	}
 	if m.colorProfile >= colorprofile.ANSI {
-		return "\x1b[2;37m" + prefix + "\x1b[0m"
+		return "\x1b[90m" + prefix + "\x1b[0m"
 	}
 	return prefix
 }
