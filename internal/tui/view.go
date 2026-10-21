@@ -121,7 +121,7 @@ func (m Model) browserRows(offset, count, width int) []string {
 		}
 		name := safeText(m.visible[i].Name)
 		if m.visible[i].RelativePath != "" && !m.visible[i].Dir {
-			if m.foldersVisible || m.duplicateMediaName(i) {
+			if m.foldersVisible || m.hiddenNameCounts[filepath.Base(m.visible[i].Name)] > 1 {
 				name = safeText(m.visible[i].RelativePath)
 			} else {
 				name = safeText(filepath.Base(m.visible[i].RelativePath))
@@ -146,19 +146,6 @@ func (m Model) browserRows(offset, count, width int) []string {
 		}
 	}
 	return rows
-}
-
-func (m Model) duplicateMediaName(index int) bool {
-	if index < 0 || index >= len(m.visible) || m.visible[index].Dir {
-		return false
-	}
-	name := filepath.Base(m.visible[index].Name)
-	for i, entry := range m.visible {
-		if i != index && !entry.Dir && filepath.Base(entry.Name) == name {
-			return true
-		}
-	}
-	return false
 }
 
 func (m Model) queueRows(offset, count, width int) []string {

@@ -1112,6 +1112,34 @@ func TestHiddenRecursiveRowsKeepScanEntriesAndFolderQueries(t *testing.T) {
 	}
 }
 
+func TestHiddenRecursiveVisibilityAppliesToIncomingAndStaleResults(t *testing.T) {
+	root := t.TempDir()
+	m := NewWithLister(root, browser.List)
+	m.recursive = true
+	m.foldersVisible = true
+	m.startDirectoryScan(true, true)
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	m = updated.(Model)
+	if cmd != nil || m.foldersVisible {
+		t.Fatalf("toggle while scanning changed command/state: cmd=%v visible=%t", cmd != nil, m.foldersVisible)
+	}
+	entries := []browser.Entry{{Name: "album", Path: filepath.Join(root, "album"), RelativePath: "album", Dir: true}, {Name: "album/song.mp3", Path: filepath.Join(root, "album/song.mp3"), RelativePath: "album/song.mp3", Media: true}}
+	updated, _ = m.Update(directoryResult{request: m.request, path: root, recursive: true, entries: entries})
+	m = updated.(Model)
+	if len(m.visible) != 1 || m.visible[0].Dir {
+		t.Fatalf("incoming result restored hidden folder: %#v", m.visible)
+	}
+	updated, _ = m.Update(directoryResult{request: m.request - 1, path: root, recursive: true, entries: []browser.Entry{{Name: "stale", Path: "/stale", Media: true}}})
+	if len(updated.(Model).visible) != 1 || updated.(Model).visible[0].Path != entries[1].Path {
+		t.Fatal("stale result replaced current hidden listing")
+	}
+	m.query = "missing"
+	m.applyFilter()
+	if !strings.Contains(m.View().Content, "Press v to show folders") {
+		t.Fatalf("hidden empty-state hint missing: %q", m.View().Content)
+	}
+}
+
 func TestDirectoryResultKeepsRestoredSelectionVisible(t *testing.T) {
 	root := t.TempDir()
 	m := NewWithLister(root, func(string) ([]browser.Entry, error) { return nil, nil })

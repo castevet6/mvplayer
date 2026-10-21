@@ -132,9 +132,11 @@ under the current root. Immediate symlinked folders appear as rows and can be
 opened explicitly.
 
 In Recursive mode, press `v` in the Browser pane to hide or show folder rows.
-Folders are shown initially; hiding them keeps all descendant media and their
-relative paths while making the media list easier to scan. The choice lasts for
-the session and does not change playback or queued items.
+Folders are shown initially; hiding them keeps all descendant media and shows
+their filenames without folder prefixes. If duplicate basenames would collide,
+those rows retain their relative paths. The query still matches the full
+relative path even when only a basename is displayed. The choice lasts for the
+session and does not change playback or queued items.
 
 Press `/` in the Browser pane to filter. The query matches names in Directory
 mode and displayed relative paths in Recursive mode, including folder names.
