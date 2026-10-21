@@ -56,10 +56,12 @@ type Model struct {
 	browseDir        string
 	entries          []browser.Entry
 	visible          []browser.Entry
+	hiddenNameCounts map[string]int
 	cursor           int
 	query            string
 	filtering        bool
 	recursive        bool
+	foldersVisible   bool
 	loading          bool
 	warning          string
 	err              error
@@ -136,7 +138,7 @@ func NewWithLister(browseDir string, list func(string) ([]browser.Entry, error))
 	noColorValue, noColorSet := os.LookupEnv("NO_COLOR")
 	noColor := noColorSet && noColorValue != ""
 	scanContext, scanCancel := context.WithCancel(context.Background())
-	return Model{browseDir: browseDir, list: list, listRecursive: browser.ListRecursive, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor, scanContext: scanContext, scanCancel: scanCancel, loading: true, inspector: mediainfo.New()}
+	return Model{browseDir: browseDir, list: list, listRecursive: browser.ListRecursive, request: 1, queueCursor: -1, queueIndex: -1, width: 80, height: 24, noColor: noColor, scanContext: scanContext, scanCancel: scanCancel, loading: true, foldersVisible: true, inspector: mediainfo.New()}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -450,6 +452,12 @@ func (m Model) updateKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.startDirectoryScan(!m.recursive, true)
 		return m, m.loadDirectory()
 	}
+	if key.String() == "v" && m.focus == browserPane && m.recursive {
+		m.foldersVisible = !m.foldersVisible
+		m.applyFilter()
+		m.keepVisible()
+		return m, nil
+	}
 	if key.String() == "?" {
 		m.help, m.helpOffset = true, 0
 		return m, nil
@@ -641,16 +649,39 @@ func (m *Model) advanceQueue(index int) tea.Cmd {
 
 func (m *Model) applyFilter() {
 	selected := ""
+	selectedDir := false
 	if m.cursor >= 0 && m.cursor < len(m.visible) {
 		selected = m.visible[m.cursor].Path
+		selectedDir = m.visible[m.cursor].Dir
 	}
-	m.visible = browser.Filter(m.entries, m.query)
+	filtered := browser.Filter(m.entries, m.query)
+	if m.recursive && !m.foldersVisible {
+		visible := make([]browser.Entry, 0, len(filtered))
+		for _, entry := range filtered {
+			if !entry.Dir {
+				visible = append(visible, entry)
+			}
+		}
+		filtered = visible
+	}
+	m.visible = filtered
+	m.hiddenNameCounts = make(map[string]int)
+	for _, entry := range m.visible {
+		if !entry.Dir {
+			m.hiddenNameCounts[filepath.Base(entry.Name)]++
+		}
+	}
 	if selected != "" {
+		found := false
 		for i := range m.visible {
 			if m.visible[i].Path == selected {
 				m.cursor = i
+				found = true
 				break
 			}
+		}
+		if !found && selectedDir && m.recursive && !m.foldersVisible && len(m.visible) > 0 {
+			m.cursor = 0
 		}
 	}
 	if m.cursor >= len(m.visible) {
