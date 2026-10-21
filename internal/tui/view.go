@@ -118,7 +118,7 @@ func (m Model) browserRows(offset, count, width int) []string {
 			mark = "> "
 		}
 		name := safeText(m.visible[i].Name)
-		if m.visible[i].RelativePath != "" && !m.visible[i].Dir {
+		if m.visible[i].RelativePath != "" && !m.visible[i].Dir && m.foldersVisible {
 			name = safeText(m.visible[i].RelativePath)
 		}
 		if m.visible[i].Dir {

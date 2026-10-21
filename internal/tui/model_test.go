@@ -1045,13 +1045,16 @@ func TestRecursiveFolderVisibilityTogglePreservesMediaAndSelection(t *testing.T)
 	if cmd != nil || m.foldersVisible || len(m.visible) != 1 || m.visible[0].Path != media || m.cursor != 0 {
 		t.Fatalf("hide folders: cmd=%v visible=%#v cursor=%d state=%t", cmd != nil, m.visible, m.cursor, m.foldersVisible)
 	}
-	if got := m.View().Content; !strings.Contains(got, "Folders hidden") || !strings.Contains(got, "album/song.mp3") {
+	if got := m.View().Content; !strings.Contains(got, "Folders hidden") || !strings.Contains(got, "song.mp3") || strings.Contains(got, "album/song.mp3") {
 		t.Fatalf("hidden-folder view missing state or media: %q", got)
 	}
 	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
 	m = updated.(Model)
-	if cmd != nil || !m.foldersVisible || len(m.visible) != 2 || m.visible[1].Path != media {
+	if cmd != nil || !m.foldersVisible || len(m.visible) != 2 || !m.visible[0].Dir || m.visible[1].Path != media {
 		t.Fatalf("show folders: cmd=%v visible=%#v state=%t", cmd != nil, m.visible, m.foldersVisible)
+	}
+	if got := m.View().Content; !strings.Contains(got, "album/") || !strings.Contains(got, "album/song.mp3") {
+		t.Fatalf("folder restoration or hidden basename rendering incorrect: %q", got)
 	}
 }
 

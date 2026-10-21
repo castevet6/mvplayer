@@ -655,7 +655,7 @@ func (m *Model) applyFilter() {
 	}
 	filtered := browser.Filter(m.entries, m.query)
 	if m.recursive && !m.foldersVisible {
-		visible := filtered[:0]
+		visible := make([]browser.Entry, 0, len(filtered))
 		for _, entry := range filtered {
 			if !entry.Dir {
 				visible = append(visible, entry)

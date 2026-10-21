@@ -142,6 +142,12 @@ directory-symlink traversal rules remain in force.
   selection fallback, playback, and queue state are preserved. Updated rendering,
   help, README guidance, and model regression tests. Status changed to
   `implemented`; interactive layout and user acceptance remain pending.
+- 2026-10-21: Fixed the toggle regression found during interactive review. Empty
+  queries had returned the original entries slice; filtering hidden folders by
+  reusing its backing array overwrote directory rows, so a second `v` could not
+  restore them. Filtering now allocates an independent visible slice, and hidden
+  recursive media render by basename while shown folders retain relative paths.
+  Added regression assertions for both toggle directions and display text.
 
 ## Verification instructions
 
@@ -190,6 +196,9 @@ Implementation verification on 2026-10-21:
 - `GOCACHE=/tmp/mvplayer-gocache go vet ./...` — passed.
 - `GOCACHE=/tmp/mvplayer-gocache go build -o build/mvplayer ./cmd/mvplayer` — passed.
 - `git diff --check` — passed.
+
+The folder-toggle regression fix was rechecked with `GOCACHE=/tmp/mvplayer-gocache
+go test -race ./...` — passed.
 
 Automated coverage exercises both toggle directions, key-context restrictions,
 selection fallback, preserved relative media paths, and rendered visibility
