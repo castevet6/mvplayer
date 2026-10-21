@@ -4,7 +4,7 @@
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-21
 - Branch: feature/mvp-4-hide-folders-in-recursive-view
-- PR: —
+- PR: https://github.com/castevet6/mvplayer/pull/5
 - Verification: pending
 
 ## Problem and intended outcome
@@ -150,6 +150,8 @@ directory-symlink traversal rules remain in force.
   Added regression assertions for both toggle directions and display text.
 - 2026-10-21: User confirmed the corrected implementation works interactively
   and approved moving forward with PR publication. Status changed to `verified`.
+- 2026-10-21: Opened [PR #5](https://github.com/castevet6/mvplayer/pull/5)
+  targeting `develop` after pushing the verified feature branch.
 
 ## Verification instructions
 
