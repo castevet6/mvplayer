@@ -1025,6 +1025,62 @@ func TestRecursiveToggleRetainsFilterAndSelection(t *testing.T) {
 	}
 }
 
+func TestRecursiveFolderVisibilityTogglePreservesMediaAndSelection(t *testing.T) {
+	root := t.TempDir()
+	folder := filepath.Join(root, "album")
+	media := filepath.Join(folder, "song.mp3")
+	m := NewWithLister(root, browser.List)
+	m.width = 120
+	m.browseDir = "/r"
+	m.recursive = true
+	m.foldersVisible = true
+	m.entries = []browser.Entry{
+		{Name: "album", Path: folder, RelativePath: "album", Dir: true},
+		{Name: "song.mp3", Path: media, RelativePath: "album/song.mp3", Media: true},
+	}
+	m.applyFilter()
+	m.cursor = 0
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	m = updated.(Model)
+	if cmd != nil || m.foldersVisible || len(m.visible) != 1 || m.visible[0].Path != media || m.cursor != 0 {
+		t.Fatalf("hide folders: cmd=%v visible=%#v cursor=%d state=%t", cmd != nil, m.visible, m.cursor, m.foldersVisible)
+	}
+	if got := m.View().Content; !strings.Contains(got, "Folders hidden") || !strings.Contains(got, "album/song.mp3") {
+		t.Fatalf("hidden-folder view missing state or media: %q", got)
+	}
+	updated, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	m = updated.(Model)
+	if cmd != nil || !m.foldersVisible || len(m.visible) != 2 || m.visible[1].Path != media {
+		t.Fatalf("show folders: cmd=%v visible=%#v state=%t", cmd != nil, m.visible, m.foldersVisible)
+	}
+}
+
+func TestRecursiveFolderVisibilityKeyContexts(t *testing.T) {
+	m := NewWithLister(t.TempDir(), browser.List)
+	m.recursive = true
+	m.entries = []browser.Entry{{Name: "song.mp3", Path: "/song.mp3", RelativePath: "song.mp3", Media: true}}
+	m.applyFilter()
+	m.filtering = true
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	m = updated.(Model)
+	if !m.foldersVisible || m.query != "v" {
+		t.Fatalf("filter input changed visibility: state=%t query=%q", m.foldersVisible, m.query)
+	}
+	m.filtering = false
+	m.focus = queuePane
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	if !updated.(Model).foldersVisible {
+		t.Fatal("queue focus changed folder visibility")
+	}
+	m = updated.(Model)
+	m.recursive = false
+	m.focus = browserPane
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'v', Text: "v"}))
+	if !updated.(Model).foldersVisible {
+		t.Fatal("directory mode changed folder visibility")
+	}
+}
+
 func TestDirectoryResultKeepsRestoredSelectionVisible(t *testing.T) {
 	root := t.TempDir()
 	m := NewWithLister(root, func(string) ([]browser.Entry, error) { return nil, nil })

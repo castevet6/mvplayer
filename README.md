@@ -131,6 +131,11 @@ selected mode. Recursive scans omit hidden paths and skip directory symlinks
 under the current root. Immediate symlinked folders appear as rows and can be
 opened explicitly.
 
+In Recursive mode, press `v` in the Browser pane to hide or show folder rows.
+Folders are shown initially; hiding them keeps all descendant media and their
+relative paths while making the media list easier to scan. The choice lasts for
+the session and does not change playback or queued items.
+
 Press `/` in the Browser pane to filter. The query matches names in Directory
 mode and displayed relative paths in Recursive mode, including folder names.
 Type printable characters, including shortcut letters, then press Enter or

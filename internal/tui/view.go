@@ -48,6 +48,9 @@ func (m Model) mainView() []string {
 		right := m.width - 3 - left
 		lines = append(lines, m.widePaneTitle("Browser", browserPane, m.cursor, len(m.visible), left)+" | "+m.widePaneTitle("Queue", queuePane, m.queueCursor, len(m.queue), right))
 		browserContext := safeText(m.browseDir) + "  " + m.browserModeLabel()
+		if m.recursive {
+			browserContext += "  " + m.folderVisibilityLabel()
+		}
 		if m.loading {
 			browserContext += "  Scanning..."
 		}
@@ -77,6 +80,9 @@ func (m Model) mainView() []string {
 		}
 		lines = append(lines, header)
 		position, context := "0/0", safeText(m.browseDir)+"  "+m.browserModeLabel()
+		if m.recursive {
+			context += "  " + m.folderVisibilityLabel()
+		}
 		if m.loading {
 			context += "  Scanning..."
 		}
@@ -127,7 +133,11 @@ func (m Model) browserRows(offset, count, width int) []string {
 	if len(rows) == 0 && m.loading {
 		rows = append(rows, "Scanning...")
 	} else if len(rows) == 0 {
-		rows = append(rows, "No matching media files or directories.")
+		if m.recursive && !m.foldersVisible {
+			rows = append(rows, "No matching media files. Press v to show folders.")
+		} else {
+			rows = append(rows, "No matching media files or directories.")
+		}
 	}
 	return rows
 }
@@ -269,7 +279,11 @@ func (m Model) hints() string {
 		return "Ctrl+C quit • Filter • type to search • Enter/Esc finish • Ctrl+U clear • Tab switch"
 	}
 	if m.focus == browserPane {
-		return "? help • i info • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter"
+		hint := "? help • i info • q quit • Tab • ↑↓ move • Enter open/play • a add • r mode • / filter"
+		if m.recursive {
+			hint += " • v folders"
+		}
+		return hint
 	}
 	return "Tab switch • ↑/k ↓/j move • Enter play • [/] select • d remove • n next • p previous • ? help • q quit"
 }
@@ -417,7 +431,7 @@ func appendTags(lines []string, s mediainfo.Stream) []string {
 }
 
 func (m Model) helpView() []string {
-	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  i                   Inspect selected browser media; Esc/i/Enter closes", "  Modal               Up/Down or j/k scroll; PgUp/PgDn page; other keys are ignored", "  Backspace           Open parent directory (browser focus)", "  r                   Toggle recursive browsing (browser focus)", "  /                   Filter displayed names or relative paths", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
+	content := []string{"MVPLAYER help", "", "Navigation", "  Tab                 Switch browser and queue focus", "  Up/Down or j/k      Move in the focused pane", "  Enter               Open/play browser item; play selected queue item", "  i                   Inspect selected browser media; Esc/i/Enter closes", "  Modal               Up/Down or j/k scroll; PgUp/PgDn page; other keys are ignored", "  Backspace           Open parent directory (browser focus)", "  r                   Toggle recursive browsing (browser focus)", "  v                   Show/hide recursive folder rows (browser focus)", "  /                   Filter displayed names or relative paths", "  Filter: printable keys search, Backspace deletes, Ctrl+U clears, Enter/Escape finishes", "", "Queue", "  a                   Add highlighted browser media to queue", "  [ / ]               Select queue entry", "  d                   Remove selected pending entry (Queue focus only)", "  n / p               Next / previous queue action", "  > marks a remembered row; * marks the playing queue entry; >* means both", "  Focused pane names use brackets and white text on blue when color is enabled", "  The active row uses bold underline with your terminal's default text color", "  NO_COLOR keeps bold text cues and removes terminal colors", "", "Playback", "  Space               Pause or resume", "  Left/Right or h/l   Seek five seconds", "  + / = / -           Adjust volume", "  s                   Stop", "  f                   Toggle fullscreen for video", "  Enter on browser media plays immediately and preserves pending queue entries", "  Queue advances after natural end-of-file; errors and stop do not advance", "", "Other", "  ? / Escape          Close help", "  q / Ctrl+C          Quit", "  Audio-only playback has no video window or fullscreen control."}
 	if m.err != nil {
 		content = append(content, "", "Browser error: "+m.err.Error())
 	}
@@ -451,6 +465,13 @@ func (m Model) browserModeLabel() string {
 		return "Recursive"
 	}
 	return "Directory"
+}
+
+func (m Model) folderVisibilityLabel() string {
+	if m.foldersVisible {
+		return "Folders shown"
+	}
+	return "Folders hidden"
 }
 
 func (m Model) browserNoticeLine() string {
