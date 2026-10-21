@@ -1,6 +1,6 @@
 # MVP-4: Hide folders from recursive view
 
-- Status: verified
+- Status: complete
 - Implementation approved: yes
 - Approved by/date: User, 2026-10-21
 - Branch: feature/mvp-4-hide-folders-in-recursive-view
@@ -97,7 +97,7 @@ directory-symlink traversal rules remain in force.
   distinguish directories from media, and the TUI retains unfiltered results
   separately from visible rows.
 - Implementation requires explicit approval recorded under
-  [the feature workflow](../FEATURE-WORKFLOW.md).
+  [the feature workflow](../../FEATURE-WORKFLOW.md).
 
 ## Implementation plan
 
@@ -152,6 +152,8 @@ directory-symlink traversal rules remain in force.
   and approved moving forward with PR publication. Status changed to `verified`.
 - 2026-10-21: Opened [PR #5](https://github.com/castevet6/mvplayer/pull/5)
   targeting `develop` after pushing the verified feature branch.
+- 2026-10-21: PR #5 merged into `develop` at 2026-10-21 19:13:58 UTC.
+  Merge commit: `ce43d6aed5ce1a5d3d7ad1a1848d3d140aaeedf1`.
 
 ## Verification instructions
 
@@ -215,5 +217,8 @@ basename display, and restoration behavior.
 
 ## Merge and archive
 
-Pending. Record the feature PR URL, merge commit, and merge date after confirmed
-merge into `develop`.
+Feature PR: https://github.com/castevet6/mvplayer/pull/5
+
+Merge commit: `ce43d6aed5ce1a5d3d7ad1a1848d3d140aaeedf1`
+
+Merged into `develop` on 2026-10-21.
